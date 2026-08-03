@@ -1,0 +1,66 @@
+{
+  "name": "keenywincleaner",
+  "version": "0.1.0",
+  "description": "A careful Windows 10 and Windows 11 cleanup utility",
+  "private": true,
+  "main": "dist-electron/index.js",
+  "author": "KeenHero",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "build:win": "npm run build && electron-builder --win",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "vue": "^3.5.40",
+    "vuetify": "^4.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "sass": "^1.93.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.0",
+    "vite-plugin-electron": "^1.1.1",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.0.3",
+    "vue-tsc": "^3.1.1"
+  },
+  "build": {
+    "appId": "com.keenhero.keenywincleaner",
+    "productName": "KeenyWinCleaner",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "KeenyWinCleaner-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KeenyWinCleaner"
+    },
+    "portable": {
+      "artifactName": "KeenyWinCleaner-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}

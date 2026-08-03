@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+release/*
+!release/*.exe
+!release/*.blockmap
+coverage/
+AGENTS.md
+*.log
+.env
+.env.*
+!.env.example
