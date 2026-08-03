@@ -1,437 +1,437 @@
 # KeenyWinCleaner
 
-![Windows 10 und 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)
+![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![Version](https://img.shields.io/badge/Version-0.1.0-12845f)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
-![Lizenz](https://img.shields.io/badge/Lizenz-MIT-blue)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
-KeenyWinCleaner ist ein vorsichtiges, transparentes Bereinigungswerkzeug für Windows 10 und Windows 11. Es findet temporäre Dateien, neu erstellbare Caches, alte Windows Installationen, ersetzte Update Komponenten und mögliche Reste deinstallierter Anwendungen.
+KeenyWinCleaner is a careful and transparent cleanup utility for Windows 10 and Windows 11. It finds temporary files, rebuildable caches, previous Windows installations, superseded update components, and possible leftovers from uninstalled applications.
 
-Das wichtigste Prinzip: Die Anwendung löscht niemals ungefragt. Jeder Treffer wird mit Pfad, Größe, Dateianzahl, Risiko und weiteren Hinweisen angezeigt. Nur ausdrücklich ausgewählte und bestätigte Ziele werden bereinigt.
+The main principle is simple: the application never deletes anything without permission. Every result includes its path, size, file count, risk level, and additional details. Only explicitly selected and confirmed targets are cleaned.
 
-## Inhalt
+## Table of contents
 
-- [Hauptfunktionen](#hauptfunktionen)
-- [Sicherheitsmodell](#sicherheitsmodell)
-- [Risikostufen](#risikostufen)
-- [Bereinigungsziele](#bereinigungsziele)
-- [AppData Resterkennung](#appdata-resterkennung)
-- [Inhaltsklassifizierung](#inhaltsklassifizierung)
-- [Windows Update und alte Windows Versionen](#windows-update-und-alte-windows-versionen)
-- [Nicht bereinigte Bereiche](#nicht-bereinigte-bereiche)
-- [Oberfläche](#oberfläche)
-- [Datenschutz](#datenschutz)
-- [Architektur](#architektur)
-- [Entwicklung](#entwicklung)
+- [Key features](#key-features)
+- [Safety model](#safety-model)
+- [Risk levels](#risk-levels)
+- [Cleanup targets](#cleanup-targets)
+- [AppData leftover detection](#appdata-leftover-detection)
+- [Content classification](#content-classification)
+- [Windows Update and previous Windows versions](#windows-update-and-previous-windows-versions)
+- [Areas that are not cleaned](#areas-that-are-not-cleaned)
+- [User interface](#user-interface)
+- [Privacy](#privacy)
+- [Architecture](#architecture)
+- [Development](#development)
 - [Tests](#tests)
-- [Windows Pakete erstellen](#windows-pakete-erstellen)
-- [Bekannte Einschränkungen](#bekannte-einschränkungen)
-- [Häufige Fragen](#häufige-fragen)
-- [Quellen](#quellen)
+- [Building Windows packages](#building-windows-packages)
+- [Known limitations](#known-limitations)
+- [Frequently asked questions](#frequently-asked-questions)
+- [Sources](#sources)
 
-## Hauptfunktionen
+## Key features
 
-- Scan bekannter temporärer Windows und Benutzerbereiche
-- Größenberechnung vor jeder Auswahl
-- Sichere Standardauswahl für neu erstellbare Daten
-- Sammelauswahl für Alle, Sicher, Prüfen und Erweitert
-- App und Browser Cache Prüfung
-- Erkennung möglicher AppData Reste in Local, Roaming und LocalLow
-- Aktueller Installationsabgleich über mehrere Windows Quellen
-- Lokale Erkennung von Entwicklerwerkzeugen, Spielen und Programmen
-- Inhaltsanalyse für Cache, Protokolle, Einstellungen, Nutzdaten und reguläre Dateien
-- Getrennte Konfidenz für Anwendungstyp und Dateninhalt
-- Prozentuale Inhaltsverteilung und sichtbare Erkennungsindizien
-- Erkennung vorhandener `Windows.old` Daten
-- DISM Analyse des Windows Komponentenspeichers
-- Unterstützte Bereinigung über Windows Autoclean und DISM
-- Schutz vor symbolischen Links und Verzeichnisverknüpfungen
-- Erneute Pfadprüfung unmittelbar vor dem Löschen
-- Bestätigung mit dem Text `CLEAN`
-- Direkter Zugriff auf die Windows Speicheroptimierung
-- Deutsche und englische Oberfläche
-- Helles und dunkles Theme mit gespeicherter Auswahl
-- Installer und Portable Build
+- Scans known Windows and user temporary locations
+- Calculates sizes before anything is selected
+- Selects rebuildable low risk data by default
+- Provides group selection for All, Safe, Review, and Advanced
+- Scans application and browser caches
+- Detects possible AppData leftovers in Local, Roaming, and LocalLow
+- Compares candidates against several current Windows installation sources
+- Locally identifies developer tools, games, and applications
+- Classifies content as cache, logs, settings, user data, or regular files
+- Shows separate confidence levels for application type and content type
+- Shows percentage based content breakdowns and detection evidence
+- Detects existing `Windows.old` data
+- Analyzes the Windows component store with DISM
+- Uses supported Windows Autoclean and DISM cleanup operations
+- Protects symbolic links and directory junctions
+- Revalidates paths immediately before deletion
+- Requires the confirmation text `CLEAN`
+- Opens Windows Storage Sense directly
+- Supports English and German
+- Includes persistent light and dark themes
+- Produces installer and portable builds
 
-## Sicherheitsmodell
+## Safety model
 
-KeenyWinCleaner behandelt Dateibereinigung als sicherheitskritische Aktion. Ein Scan verändert keine Dateien.
+KeenyWinCleaner treats file cleanup as a security critical operation. A scan never changes files.
 
-Der Ablauf besteht aus mehreren Schutzschichten:
+The cleanup flow uses several layers of protection:
 
-1. Bekannte Ziele werden im Hauptprozess definiert.
-2. AppData Kandidaten werden nur unter festgelegten Wurzelverzeichnissen gesucht.
-3. Der Scan misst Größe und Inhalt, ohne Dateiinhalte zu lesen.
-4. Nur erfolgreich geprüfte Treffer erhalten den Status `ready`.
-5. Der Hauptprozess speichert ausschließlich die Ziele des letzten Scans als zulässig.
-6. Vor der Bereinigung muss der Nutzer konkrete Ziele auswählen.
-7. Für die endgültige Bereinigung muss `CLEAN` eingegeben werden.
-8. Vor jedem Löschvorgang werden Pfad, Typ und Linkstatus erneut geprüft.
-9. Pfade außerhalb der zugelassenen Wurzeln werden abgelehnt.
-10. Symbolische Links und Verzeichnisverknüpfungen werden nicht verfolgt.
-11. Gesperrte oder geschützte Dateien werden übersprungen und als Fehler gemeldet.
+1. Known targets are defined in the Electron main process.
+2. AppData candidates are searched only inside fixed root directories.
+3. The scan measures size and structure without reading file contents.
+4. Only successfully inspected results receive the `ready` status.
+5. The main process stores only targets approved by the latest scan.
+6. The user must explicitly select cleanup targets.
+7. The final action requires the text `CLEAN`.
+8. Path boundaries, file type, and link status are checked again before deletion.
+9. Paths outside approved roots are rejected.
+10. Symbolic links and directory junctions are never followed.
+11. Locked or protected files are skipped and reported as failures.
 
-Eine Ziel-ID allein reicht nicht für eine Bereinigung. Sie muss aus dem aktuellen Scan stammen und im Hauptprozess freigegeben worden sein.
+A target ID alone cannot authorize a cleanup. It must come from the current scan and remain approved inside the main process.
 
-## Risikostufen
+## Risk levels
 
-| Stufe | Bedeutung | Standardauswahl |
+| Level | Meaning | Selected by default |
 | --- | --- | --- |
-| Sicher | Temporäre oder neu erstellbare Daten mit begrenztem Risiko | Ja |
-| Prüfen | App oder Browser Cache. Das betroffene Programm sollte geschlossen sein | Nein |
-| Erweitert | AppData Kandidaten und Systembereiche mit möglichem Datenverlust | Nein |
+| Safe | Temporary or rebuildable data with limited risk | Yes |
+| Review | Application or browser cache. The related application should be closed | No |
+| Advanced | AppData candidates and system areas with possible data loss | No |
 
-Alle verfügbaren Treffer lassen sich zusätzlich gesammelt nach Risikostufe auswählen oder wieder abwählen.
+Available results can also be selected or cleared as a group by risk level.
 
-## Bereinigungsziele
+## Cleanup targets
 
-### Sichere Ziele
+### Safe targets
 
-| Bereich | Pfad | Verhalten |
+| Area | Path | Behavior |
 | --- | --- | --- |
-| Benutzer Temp | `%TEMP%` | Inhalt wird entfernt. Gesperrte Dateien werden übersprungen |
-| Absturzabbilder | `%LOCALAPPDATA%\CrashDumps` | Diagnoseabbilder abgestürzter Anwendungen |
-| DirectX Shadercache | `%LOCALAPPDATA%\D3DSCache` | Neu erstellbare Grafikdaten |
-| Windows Fehlerberichte | `%LOCALAPPDATA%\Microsoft\Windows\WER` | Fehlerberichte und Warteschlangen |
-| Miniaturansichten | `%LOCALAPPDATA%\Microsoft\Windows\Explorer` | Nur `thumbcache` und `iconcache` Datenbanken |
+| User temporary files | `%TEMP%` | Contents are removed. Locked files are skipped |
+| Crash dumps | `%LOCALAPPDATA%\CrashDumps` | Diagnostic dumps from crashed applications |
+| DirectX shader cache | `%LOCALAPPDATA%\D3DSCache` | Rebuildable graphics data |
+| Windows error reports | `%LOCALAPPDATA%\Microsoft\Windows\WER` | Error reports and diagnostic queues |
+| Thumbnails | `%LOCALAPPDATA%\Microsoft\Windows\Explorer` | Only `thumbcache` and `iconcache` databases |
 
-### Ziele mit Prüfung
+### Review targets
 
-| Bereich | Pfad | Hinweis |
+| Area | Path | Note |
 | --- | --- | --- |
-| Microsoft Edge Cache | `%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache` | Edge vorher schließen |
-| Google Chrome Cache | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache` | Chrome vorher schließen |
-| Discord Cache | `%APPDATA%\discord\Cache` | Discord vorher schließen |
+| Microsoft Edge cache | `%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache` | Close Edge first |
+| Google Chrome cache | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache` | Close Chrome first |
+| Discord cache | `%APPDATA%\discord\Cache` | Close Discord first |
 
-### Erweiterte Systemziele
+### Advanced system targets
 
-| Bereich | Pfad oder Werkzeug | Administrator | Verhalten |
+| Area | Path or tool | Administrator | Behavior |
 | --- | --- | --- | --- |
-| Windows Temp | `%WINDIR%\Temp` | Ja | Inhalt wird einzeln geprüft und entfernt |
-| Übermittlungsoptimierung | `%ProgramData%\Microsoft\Windows\DeliveryOptimization\Cache` | Ja | Heruntergeladener Update Cache |
-| Frühere Windows Installation | `%SystemDrive%\Windows.old` | Ja | Bereinigung über Windows Autoclean |
-| Windows Komponentenspeicher | DISM Analyse von `%WINDIR%\WinSxS` | Ja | Nur bei ausdrücklicher DISM Empfehlung |
+| Windows Temp | `%WINDIR%\Temp` | Yes | Contents are checked and removed individually |
+| Delivery Optimization | `%ProgramData%\Microsoft\Windows\DeliveryOptimization\Cache` | Yes | Downloaded update cache |
+| Previous Windows installation | `%SystemDrive%\Windows.old` | Yes | Cleanup through Windows Autoclean |
+| Windows component store | DISM analysis of `%WINDIR%\WinSxS` | Yes | Offered only when DISM explicitly recommends cleanup |
 
-Eine vollständige technische Beschreibung steht in [docs/CLEANING_TARGETS.md](docs/CLEANING_TARGETS.md).
+A complete technical description is available in [docs/CLEANING_TARGETS.md](docs/CLEANING_TARGETS.md).
 
-## AppData Resterkennung
+## AppData leftover detection
 
-AppData darf niemals pauschal geleert werden. Anwendungen speichern dort Profile, Einstellungen, Datenbanken, Sitzungen, Spielstände, lokale Dokumente und Anmeldedaten.
+AppData must never be cleared as a whole. Applications store profiles, settings, databases, sessions, game saves, local documents, and authentication data there.
 
-KeenyWinCleaner untersucht ausschließlich direkte Unterordner dieser drei Wurzeln:
+KeenyWinCleaner inspects only direct child directories of these three roots:
 
 - `%LOCALAPPDATA%`
 - `%APPDATA%`
 - `%USERPROFILE%\AppData\LocalLow`
 
-Ein Ordner wird nur als möglicher Rest angezeigt, wenn alle folgenden Bedingungen erfüllt sind:
+A folder is shown as a possible leftover only when all of the following conditions are met:
 
-1. Der Ordner ist mindestens 14 Tage alt. Der Standardwert beträgt 45 Tage.
-2. Sein Name passt nicht zu einem erkannten installierten Programm.
-3. Sein Name passt nicht zu einem installierten Microsoft Store Paket.
-4. Sein Name passt nicht zu Name oder Pfad eines laufenden Prozesses.
-5. Sein Name passt nicht zu einem Eintrag im persönlichen oder systemweiten Startmenü.
-6. Er gehört nicht zu einem geschützten Windows Bereich.
-7. Er ist weder ein symbolischer Link noch eine Verzeichnisverknüpfung.
+1. The folder is at least 14 days old. The default is 45 days.
+2. Its name does not match a detected installed application.
+3. Its name does not match an installed Microsoft Store package.
+4. Its name does not match the name or executable path of a running process.
+5. Its name does not match a personal or system wide Start menu entry.
+6. It is not part of the internal Windows protection list.
+7. It is neither a symbolic link nor a directory junction.
 
-### Verwendete Installationsquellen
+### Installation sources
 
-Die Erkennung kombiniert mehrere lokale Windows Quellen:
+Detection combines several local Windows sources:
 
 - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`
 - `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall`
 - `HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`
-- Anzeigename, Herausgeber, Installationspfad und Programmsymbol
-- Installierte Microsoft Store und MSIX Pakete über `Get-AppxPackage`
-- Aktuell laufende Prozesse über `Win32_Process`
-- Namen und ausführbare Pfade laufender Prozesse
-- Persönliche und systemweite Startmenüeinträge
+- Display name, publisher, installation location, and display icon
+- Installed Microsoft Store and MSIX packages through `Get-AppxPackage`
+- Currently running processes through `Win32_Process`
+- Names and executable paths of running processes
+- Personal and system wide Start menu entries
 
-Die Namen werden normalisiert und mit den AppData Ordnernamen verglichen. Kurze und mehrdeutige Namen werden vorsichtshalber geschützt.
+Names are normalized and compared with AppData folder names. Short and ambiguous names are protected as a precaution.
 
-Wichtig: Ein fehlender Treffer beweist nicht, dass eine Anwendung deinstalliert wurde. Portable Programme, ungewöhnliche Installer, Spieleplattformen und manuell verschobene Anwendungen können unvollständige Spuren hinterlassen. AppData Kandidaten sind deshalb immer erweitert und nie automatisch ausgewählt.
+Important: a missing match does not prove that an application has been uninstalled. Portable programs, unusual installers, game platforms, and manually moved applications can leave incomplete installation traces. AppData candidates are therefore always Advanced and are never selected automatically.
 
-## Inhaltsklassifizierung
+## Content classification
 
-Jeder mögliche AppData Rest erhält zusätzliche lokale Informationen.
+Every possible AppData leftover receives additional local classification data.
 
-### Anwendungstyp
+### Application type
 
-- Entwicklerwerkzeug
-- Spiel
-- Programm
-- Windows System
-- Unbekannt
+- Developer tool
+- Game
+- Application
+- Windows system
+- Unknown
 
-### Dateninhalt
+### Content type
 
 - Cache
-- Protokolle und Absturzberichte
-- Einstellungen und Konfiguration
-- Mögliche Nutzdaten
-- Reguläre Dateien
-- Gemischte Daten
-- Windows Rollback Daten
-- Windows Update Komponenten
-- Unbekannt
+- Logs and crash reports
+- Settings and configuration
+- Possible user data
+- Regular files
+- Mixed data
+- Windows rollback data
+- Windows update components
+- Unknown
 
-### Analysierte Merkmale
+### Analyzed properties
 
-Die Klassifizierung verwendet ausschließlich Metadaten:
+Classification uses metadata only:
 
-- Ordnernamen
-- Dateinamen
-- Dateiendungen
-- Dateigrößen
-- Größenverteilung innerhalb des Ordners
-- Typische Strukturen wie `Cache`, `Logs`, `Saves`, `Mods`, `node_modules`, `.git` oder `Settings`
-- Typische Programmdateien, Quellcodedateien und Spielstandformate
+- Folder names
+- File names
+- File extensions
+- File sizes
+- Size distribution inside the folder
+- Common structures such as `Cache`, `Logs`, `Saves`, `Mods`, `node_modules`, `.git`, or `Settings`
+- Common executable, source code, and game save formats
 
-Dateiinhalte werden nicht geöffnet oder gelesen. Die Oberfläche zeigt für Anwendungstyp und Dateninhalt getrennte Konfidenzen. Zusätzlich werden die wichtigsten Indizien und die prozentuale Inhaltsverteilung angezeigt.
+File contents are never opened or read. The interface displays separate confidence levels for the application type and the content type. It also shows the strongest evidence and a percentage based content breakdown.
 
-Die Klassifizierung ist eine Heuristik. Auch hohe Konfidenz ist keine Löschfreigabe. Besonders mögliche Nutzdaten und gemischte Ordner sollten vor einer Bereinigung manuell geöffnet und geprüft werden.
+Classification is heuristic. Even high confidence is not permission to delete a folder. Possible user data and mixed folders should always be opened and reviewed manually before cleanup.
 
-## Windows Update und alte Windows Versionen
+## Windows Update and previous Windows versions
 
-### Frühere Windows Installation
+### Previous Windows installation
 
-Wenn `%SystemDrive%\Windows.old` vorhanden ist, erscheint ein erweitertes Ziel. KeenyWinCleaner löscht diesen Ordner nicht direkt. Die Bereinigung verwendet:
+When `%SystemDrive%\Windows.old` exists, an Advanced target is displayed. KeenyWinCleaner does not delete this folder directly. Cleanup uses:
 
 ```text
 cleanmgr.exe /d C: /autoclean
 ```
 
-Das Entfernen beendet die Möglichkeit, zur vorherigen Windows Version zurückzukehren. Deshalb benötigt das Ziel Administratorrechte und ist nie vorausgewählt.
+Removing this data permanently removes the option to return to the previous Windows version. The target therefore requires administrator access and is never selected automatically.
 
-### Windows Komponentenspeicher
+### Windows component store
 
-Bei aktiviertem Systemscan analysiert KeenyWinCleaner den Komponentenspeicher mit:
+When the system scan is enabled, KeenyWinCleaner analyzes the component store with:
 
 ```text
 dism.exe /Online /Cleanup-Image /AnalyzeComponentStore /English
 ```
 
-Das Ziel erscheint nur, wenn DISM `Component Store Cleanup Recommended: Yes` meldet. Die Bereinigung verwendet anschließend:
+The target appears only when DISM reports `Component Store Cleanup Recommended: Yes`. Cleanup then uses:
 
 ```text
 dism.exe /Online /Cleanup-Image /StartComponentCleanup /English
 ```
 
-`WinSxS` wird niemals direkt gelöscht.
+`WinSxS` is never deleted directly.
 
-### Windows Update Download Cache
+### Windows Update download cache
 
-Der Inhalt von `%WINDIR%\SoftwareDistribution\Download` wird nicht direkt gelöscht. Dieser Ordner wird von Windows Update Diensten verwaltet. KeenyWinCleaner beschränkt sich auf die Übermittlungsoptimierung, die DISM Komponentenbereinigung und die offizielle Windows Speicherverwaltung.
+The contents of `%WINDIR%\SoftwareDistribution\Download` are not deleted directly. This directory is managed by Windows Update services. KeenyWinCleaner limits itself to Delivery Optimization, DISM component cleanup, and the official Windows storage interface.
 
-## Nicht bereinigte Bereiche
+## Areas that are not cleaned
 
-Folgende Bereiche werden bewusst nicht direkt gelöscht:
+The following areas are deliberately excluded from direct cleanup:
 
 - Downloads
-- Dokumente, Bilder, Videos und Musik
-- OneDrive und andere Cloud Dateien
-- Papierkorb
-- Windows Update Download Cache außerhalb der Übermittlungsoptimierung
-- Wiederherstellungspunkte
+- Documents, pictures, videos, and music
+- OneDrive and other cloud files
+- Recycle Bin
+- Windows Update download cache outside Delivery Optimization
+- Restore points
 - Prefetch
-- Registry Einträge
-- Treiberpakete
-- Gesamte AppData Wurzelverzeichnisse
-- `WinSxS` per Dateisystemlöschung
-- Unbekannte Pfade außerhalb der festen Zieldefinitionen
+- Registry entries
+- Driver packages
+- Complete AppData root directories
+- `WinSxS` through direct file deletion
+- Unknown paths outside fixed target definitions
 
-Für Downloads, Papierkorb, Cloud Dateien und weitere Windows Bereiche kann die Anwendung direkt die Windows Speicheroptimierung öffnen.
+The application can open Windows Storage Sense for Downloads, Recycle Bin, cloud files, and other Windows managed areas.
 
-## Oberfläche
+## User interface
 
-Die Oberfläche ist auf schnelle Prüfung und klare Kontrolle ausgelegt.
+The interface is designed for fast review and clear control.
 
-- Übersicht mit gefundener Größe, Dateianzahl, Auswahl und Scanzeit
-- Getrennte Scanoptionen für sichere Ziele, App Caches, AppData Reste und Systembereiche
-- Einstellbares Mindestalter für AppData Kandidaten
-- Fortschrittsanzeige während des Scans
-- Filter für Alle, Sicher, Prüfen und Erweitert
-- Sammelauswahl je Risikostufe
-- Ergebniszeilen mit Pfad, Größe, Datei und Ordneranzahl
-- Direkte Ordneröffnung zur manuellen Prüfung
-- Sichtbare Klassifikation und Konfidenz
-- Permanenter Bereinigungsbalken mit ausgewählter Gesamtgröße
-- Zusätzliche Warnung bei erweiterten Zielen
-- Deutsche und englische Texte
-- Helles und dunkles Theme
-- Persistente Sprachwahl und Theme Auswahl über `localStorage`
+- Dashboard with detected size, file count, selected size, and scan time
+- Separate scan options for safe targets, application caches, AppData leftovers, and system areas
+- Configurable minimum age for AppData candidates
+- Progress indicator during scans
+- Filters for All, Safe, Review, and Advanced
+- Group selection by risk level
+- Result rows with path, size, file count, and folder count
+- Direct folder access for manual review
+- Visible classification and confidence information
+- Persistent cleanup bar with selected total size
+- Additional warning for Advanced targets
+- English and German text
+- Light and dark themes
+- Persistent language and theme selection through `localStorage`
 
-## Datenschutz
+## Privacy
 
-KeenyWinCleaner arbeitet lokal.
+KeenyWinCleaner operates locally.
 
-- Keine Telemetrie
-- Keine Analyse in der Cloud
-- Keine Übertragung von Dateinamen oder Pfaden
-- Keine Anmeldung
-- Kein Benutzerkonto
-- Kein automatischer Upload
-- Kein automatischer Updater
-- Keine Ausführung heruntergeladener Bereinigungsskripte
-- Keine Dateiinhaltsanalyse
+- No telemetry
+- No cloud analysis
+- No transmission of file names or paths
+- No sign in
+- No user account
+- No automatic uploads
+- No automatic updater
+- No downloaded cleanup scripts
+- No file content analysis
 
-PowerShell wird lokal und ohne Profil für die Erkennung installierter Store Pakete und laufender Prozesse verwendet. Windows Systemwerkzeuge werden als lokale Prozesse mit festen Argumentlisten aufgerufen.
+PowerShell runs locally without loading a profile and is used only to detect installed Store packages and running processes. Windows system tools are started as local processes with fixed argument lists.
 
-## Architektur
+## Architecture
 
-### Technologie
+### Technology stack
 
-| Bereich | Technologie |
+| Area | Technology |
 | --- | --- |
-| Desktop Laufzeit | Electron 43 |
-| Oberfläche | Vue 3 |
-| Komponenten | Vuetify 4 |
+| Desktop runtime | Electron 43 |
+| User interface | Vue 3 |
+| Components | Vuetify 4 |
 | Icons | Material Design Icons |
-| Sprache | TypeScript 5 |
-| Build | Vite 8 |
+| Language | TypeScript 5 |
+| Build system | Vite 8 |
 | Tests | Vitest 4 |
-| Paketerstellung | electron-builder 26 |
+| Packaging | electron-builder 26 |
 
-### Prozessaufteilung
+### Process separation
 
 ```text
-Vue Renderer
+Vue renderer
     |
-    | begrenzte Preload API
+    | limited preload API
     v
-Electron Preload
+Electron preload
     |
-    | validierte IPC Aufrufe
+    | validated IPC calls
     v
-Electron Hauptprozess
+Electron main process
     |
-    + Scanner und Pfadmessung
-    + Installationsabgleich
-    + Inhaltsklassifizierung
-    + Zulässige Ziele des letzten Scans
-    + Dateisystembereinigung
-    + cleanmgr und DISM
+    + Scanner and path measurement
+    + Installed application matching
+    + Content classification
+    + Approved targets from the latest scan
+    + File system cleanup
+    + cleanmgr and DISM
 ```
 
-Der Renderer besitzt keinen direkten Node.js Zugriff. Das Fenster verwendet:
+The renderer has no direct Node.js access. The application window uses:
 
 - `contextIsolation: true`
 - `nodeIntegration: false`
 - `sandbox: true`
-- Blockierte neue Fenster
+- Blocked new windows
 
-Die Preload Schnittstelle stellt nur folgende Funktionen bereit:
+The preload bridge exposes only these operations:
 
-- Anwendungsinformationen lesen
-- Scan starten
-- Scanfortschritt empfangen
-- Ausgewählte Ziele bereinigen
-- Einen Ergebnisordner öffnen
-- Windows Speichereinstellungen öffnen
+- Read application information
+- Start a scan
+- Receive scan progress
+- Clean selected targets
+- Open a result folder
+- Open Windows storage settings
 
-### Projektstruktur
+### Project structure
 
 ```text
 keenandclean/
   electron/
     main/
-      classifier.ts     Lokale Inhaltsklassifizierung
-      cleaner.ts        Scan, Messung und Bereinigung
-      index.ts          Electron Fenster und IPC Handler
-      registry.ts       Installationsabgleich
+      classifier.ts     Local content classification
+      cleaner.ts        Scanning, measurement, and cleanup
+      index.ts          Electron window and IPC handlers
+      registry.ts       Installed application matching
     preload/
-      index.ts          Begrenzte Renderer API
+      index.ts          Limited renderer API
   src/
-    App.vue             Hauptoberfläche
-    i18n.ts             Deutsche und englische Texte
-    main.ts             Vue und Vuetify Startpunkt
-    styles.scss         Helles und dunkles Theme
-    types.ts            Gemeinsame Datentypen
+    App.vue             Main user interface
+    i18n.ts             English and German translations
+    main.ts             Vue and Vuetify entry point
+    styles.scss         Light and dark themes
+    types.ts            Shared data types
   tests/
-    safety.test.ts      Sicherheits und Klassifizierungstests
+    safety.test.ts      Safety and classification tests
   docs/
-    CLEANING_TARGETS.md Technische Zielbeschreibung
-  package.json          Befehle und Buildkonfiguration
+    CLEANING_TARGETS.md Technical cleanup target documentation
+  package.json          Commands and build configuration
 ```
 
-## Entwicklung
+## Development
 
-### Voraussetzungen
+### Requirements
 
-- Windows 10 oder Windows 11
-- Node.js 20 oder neuer
+- Windows 10 or Windows 11
+- Node.js 20 or newer
 - npm
-- PowerShell 5.1 oder neuer
-- Administratorrechte nur für erweiterte Systemscans und Systembereinigungen
+- PowerShell 5.1 or newer
+- Administrator access only for advanced system scans and system cleanup
 
 ### Installation
 
 ```powershell
-git clone <DEINE-REPOSITORY-URL>
+git clone <YOUR-REPOSITORY-URL>
 cd keenandclean
 npm install
 ```
 
-### Entwicklungsmodus
+### Development mode
 
 ```powershell
 npm run dev
 ```
 
-Vite startet die Oberfläche und öffnet die Electron Anwendung mit Hot Reload.
+Vite starts the user interface and opens the Electron application with hot reload.
 
-### Produktionsbuild
+### Production build
 
 ```powershell
 npm run build
 ```
 
-Dieser Befehl führt zuerst die TypeScript Prüfung aus und erstellt anschließend Renderer, Hauptprozess und Preload Bundle.
+This command first runs the TypeScript checks and then builds the renderer, main process, and preload bundles.
 
-### Verfügbare Befehle
+### Available commands
 
-| Befehl | Zweck |
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` | Entwicklungsmodus mit Hot Reload |
-| `npm test` | Alle Tests einmal ausführen |
-| `npm run test:watch` | Tests bei Änderungen erneut ausführen |
-| `npm run build` | TypeScript prüfen und Produktionsbundle erstellen |
-| `npm run build:win` | Produktionsbundle, Installer und Portable Version erstellen |
-| `npm run preview` | Gebautes Frontend lokal anzeigen |
+| `npm run dev` | Development mode with hot reload |
+| `npm test` | Run all tests once |
+| `npm run test:watch` | Rerun tests when files change |
+| `npm run build` | Check TypeScript and create production bundles |
+| `npm run build:win` | Build the application, installer, and portable package |
+| `npm run preview` | Preview the built frontend locally |
 
 ## Tests
 
-Die Tests prüfen derzeit:
+The current test suite covers:
 
-- Pfadgrenzen innerhalb zulässiger Wurzeln
-- Ablehnung ähnlich benannter Nachbarpfade
-- Schutz vor Pfadtraversierung
-- Normalisierung installierter Programmnamen
-- Erkennung installierter Anwendungen
-- Schutz kurzer und mehrdeutiger Namen
-- Kennzeichnung nicht erkannter alter Ordner
-- Auswertung von DISM Größenangaben
-- Entwicklerwerkzeug Erkennung
-- Spiel und Spielstand Erkennung
-- Cache Erkennung
-- Erkennung gemischter Daten
-- Schutz vor schwachen Fehlklassifizierungen
-- Priorisierung bekannter Spielanbieter
+- Path boundaries inside approved roots
+- Rejection of similarly named sibling paths
+- Protection against path traversal
+- Normalization of installed application names
+- Installed application matching
+- Protection of short and ambiguous names
+- Detection of old unmatched folders
+- Parsing of DISM size output
+- Developer tool detection
+- Game and game save detection
+- Cache detection
+- Mixed content detection
+- Protection against weak false classifications
+- Prioritization of known game vendors
 
-Tests starten:
+Run the tests with:
 
 ```powershell
 npm test
 ```
 
-## Windows Pakete erstellen
+## Building Windows packages
 
 ```powershell
 npm run build:win
 ```
 
-Die Ergebnisse werden in `release` erstellt:
+Artifacts are created in `release`:
 
 ```text
 release/KeenyWinCleaner-Setup-0.1.0-x64.exe
@@ -439,79 +439,79 @@ release/KeenyWinCleaner-Portable-0.1.0-x64.exe
 release/win-unpacked/KeenyWinCleaner.exe
 ```
 
-Der NSIS Installer erlaubt die Auswahl des Installationsordners und erstellt Desktop und Startmenüverknüpfungen. Die Portable Version benötigt keine Installation.
+The NSIS installer allows the user to choose an installation directory and creates Desktop and Start menu shortcuts. The portable build requires no installation.
 
-## Bekannte Einschränkungen
+## Known limitations
 
-- Die AppData Resterkennung ist heuristisch und kann falsch positive oder falsch negative Ergebnisse enthalten.
-- Portable Anwendungen erscheinen nicht immer in den Windows Uninstall Schlüsseln.
-- Manche Spiele und Launcher verwenden abweichende Namen für Installation und AppData Ordner.
-- Ein laufender Prozess beweist nur die aktuelle Nutzung, nicht die vollständige Zugehörigkeit aller Daten.
-- Store Paketinformationen können bei beschädigten Paketen unvollständig sein.
-- Administratorrechte sind für einige Systempfade und DISM erforderlich.
-- Gesperrte Dateien können erst nach dem Schließen der zugehörigen Anwendung bereinigt werden.
-- Die Größenanzeige ist eine Momentaufnahme. Anwendungen können Dateien während oder nach dem Scan verändern.
-- Autoclean und DISM können tatsächlich freigegebenen Speicher anders berechnen als die vorherige Schätzung.
-- Die aktuelle Oberfläche untersucht die Standardprofile von Edge und Chrome. Weitere Browserprofile sind noch nicht einzeln aufgeführt.
-- Die aktuelle Windows Paketerstellung zielt auf x64 Systeme.
+- AppData leftover detection is heuristic and can produce false positives or false negatives.
+- Portable applications do not always appear in Windows uninstall registry keys.
+- Some games and launchers use different names for their installation and AppData folders.
+- A running process proves only current use, not ownership of every related data folder.
+- Store package information can be incomplete when packages are damaged.
+- Administrator access is required for some system paths and DISM operations.
+- Locked files can be cleaned only after the related application is closed.
+- Size information is a snapshot. Applications can change files during or after a scan.
+- Autoclean and DISM can report a different amount of freed space than the initial estimate.
+- The current interface scans only the default Edge and Chrome profiles as dedicated browser targets.
+- Current Windows packages target x64 systems.
 
-## Häufige Fragen
+## Frequently asked questions
 
-### Löscht KeenyWinCleaner AppData vollständig?
+### Does KeenyWinCleaner delete all of AppData?
 
-Nein. Eine vollständige AppData Löschung würde aktive Profile, Einstellungen und persönliche Daten zerstören. Es werden nur alte, nicht zugeordnete direkte Unterordner als erweiterte Kandidaten angezeigt.
+No. Deleting all of AppData would destroy active profiles, settings, and personal data. Only old, unmatched direct child folders are displayed as Advanced candidates.
 
-### Werden AppData Kandidaten automatisch ausgewählt?
+### Are AppData candidates selected automatically?
 
-Nein. Nur sichere Ziele sind standardmäßig ausgewählt. AppData Kandidaten und Systembereiche müssen bewusst ausgewählt und mit `CLEAN` bestätigt werden.
+No. Only Safe targets are selected by default. AppData candidates and system areas must be selected manually and confirmed with `CLEAN`.
 
-### Bedeutet hohe Konfidenz, dass ein Ordner sicher gelöscht werden kann?
+### Does high confidence mean that a folder is safe to delete?
 
-Nein. Die Konfidenz beschreibt nur, wie stark die sichtbaren Metadaten zur Klassifizierung passen. Sie ist keine Garantie für Deinstallation oder Entbehrlichkeit.
+No. Confidence describes only how strongly visible metadata matches a classification. It is not proof that an application was uninstalled or that its data is unnecessary.
 
-### Warum wird ein installiertes Programm als möglicher Rest angezeigt?
+### Why is an installed application shown as a possible leftover?
 
-Mögliche Ursachen sind ein portables Programm, ein ungewöhnlicher Installer, ein anderer Anzeigename, ein nicht laufender Prozess oder ein Launcher mit getrennten Ordnernamen. Öffne den Ergebnisordner und prüfe ihn vor dem Löschen.
+Possible causes include a portable application, an unusual installer, a different display name, a process that is not currently running, or a launcher that uses separate folder names. Open and inspect the result folder before deletion.
 
-### Warum wird ein deinstalliertes Programm nicht angezeigt?
+### Why is an uninstalled application not shown?
 
-Der Ordner kann jünger als das eingestellte Mindestalter sein, einen geschützten Namen besitzen oder noch zu einem vorhandenen Installationsmerkmal passen.
+The folder may be newer than the configured minimum age, use a protected name, or still match an existing installation signal.
 
-### Warum braucht die Systembereinigung Administratorrechte?
+### Why does system cleanup require administrator access?
 
-Windows schützt System Temp, Delivery Optimization, `Windows.old` und den Komponentenspeicher. KeenyWinCleaner umgeht diese Schutzmechanismen nicht.
+Windows protects System Temp, Delivery Optimization, `Windows.old`, and the component store. KeenyWinCleaner does not bypass these protections.
 
-### Kann eine frühere Windows Version nach der Bereinigung wiederhergestellt werden?
+### Can a previous Windows version be restored after cleanup?
 
-Nein. Nach dem Entfernen von `Windows.old` über Autoclean steht die Rückkehr zur vorherigen Windows Version nicht mehr zur Verfügung.
+No. After `Windows.old` is removed through Autoclean, the option to return to the previous Windows version is no longer available.
 
-### Wird `WinSxS` direkt gelöscht?
+### Is `WinSxS` deleted directly?
 
-Nein. KeenyWinCleaner verwendet ausschließlich die unterstützte DISM Analyse und `StartComponentCleanup`.
+No. KeenyWinCleaner uses only the supported DISM analysis and `StartComponentCleanup` operation.
 
-### Werden gesperrte Dateien erzwungen gelöscht?
+### Are locked files deleted forcibly?
 
-Nein. Nicht zugängliche oder verwendete Dateien werden übersprungen.
+No. Inaccessible or currently used files are skipped.
 
-## Quellen
+## Sources
 
-Die Zielauswahl orientiert sich an offiziellen Windows Dokumentationen:
+Cleanup target selection is based on official Windows documentation:
 
-- [Microsoft Support: Speicheroptimierung verwalten](https://support.microsoft.com/en-US/Windows/Experience/Storage-FileManagement/manage-drive-space-with-storage-sense)
-- [Microsoft Support: Speicherplatz in Windows freigeben](https://support.microsoft.com/en-us/windows/free-up-drive-space-in-windows-85529ccb-c365-490d-b548-831022bc9b32)
-- [Microsoft Learn: Speicheroptimierung konfigurieren](https://learn.microsoft.com/en-us/windows/configuration/storage/storage-sense)
+- [Microsoft Support: Manage Storage Sense](https://support.microsoft.com/en-US/Windows/Experience/Storage-FileManagement/manage-drive-space-with-storage-sense)
+- [Microsoft Support: Free up drive space in Windows](https://support.microsoft.com/en-us/windows/free-up-drive-space-in-windows-85529ccb-c365-490d-b548-831022bc9b32)
+- [Microsoft Learn: Configure Storage Sense](https://learn.microsoft.com/en-us/windows/configuration/storage/storage-sense)
 - [Microsoft Learn: Windows Known Folder IDs](https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid)
 - [Microsoft Learn: ApplicationData](https://learn.microsoft.com/en-us/uwp/api/windows.storage.applicationdata)
-- [Microsoft Learn: Installierte Software über Registrierung prüfen](https://learn.microsoft.com/en-us/powershell/scripting/samples/working-with-software-installations)
+- [Microsoft Learn: Working with software installations](https://learn.microsoft.com/en-us/powershell/scripting/samples/working-with-software-installations)
 - [Microsoft Learn: Get-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/get-appxpackage)
 - [Microsoft Learn: cleanmgr](https://learn.microsoft.com/windows-server/administration/windows-commands/cleanmgr)
-- [Microsoft Learn: WinSxS bereinigen](https://learn.microsoft.com/en-ie/windows-hardware/manufacture/desktop/clean-up-the-winsxs-folder)
-- [Microsoft Support: Frühere Windows Version löschen](https://support.microsoft.com/en-gb/windows/delete-your-previous-version-of-windows-f8b26680-e083-c710-b757-7567d69dbb74)
+- [Microsoft Learn: Clean up the WinSxS folder](https://learn.microsoft.com/en-ie/windows-hardware/manufacture/desktop/clean-up-the-winsxs-folder)
+- [Microsoft Support: Delete a previous version of Windows](https://support.microsoft.com/en-gb/windows/delete-your-previous-version-of-windows-f8b26680-e083-c710-b757-7567d69dbb74)
 
-## Lizenz
+## License
 
-Die Projektmetadaten deklarieren die MIT Lizenz. Vor der öffentlichen Veröffentlichung sollte zusätzlich eine vollständige `LICENSE` Datei in das Repository aufgenommen werden.
+The project metadata declares the MIT License. A complete `LICENSE` file should also be added to the repository before a public release.
 
-## Sicherheitshinweis
+## Safety notice
 
-Dateibereinigung kann Daten dauerhaft entfernen. Prüfe erweiterte Treffer immer manuell und sichere wichtige Daten vor umfangreichen Bereinigungen. Die Software wird ohne Garantie bereitgestellt.
+File cleanup can permanently remove data. Always review Advanced results manually and back up important data before performing extensive cleanup. This software is provided without warranty.
