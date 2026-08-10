@@ -1,6 +1,18 @@
 export type Language = 'de' | 'en'
 export type RiskLevel = 'safe' | 'review' | 'advanced'
-export type ScanKind = 'contents' | 'folder'
+export type ScanKind = 'contents' | 'folder' | 'file'
+export type TargetCategory =
+  | 'temporary'
+  | 'reports'
+  | 'cache'
+  | 'browser'
+  | 'apps'
+  | 'development'
+  | 'games'
+  | 'logs'
+  | 'system'
+  | 'recycle'
+  | 'leftovers'
 export type ApplicationType = 'development' | 'game' | 'application' | 'system' | 'unknown'
 export type ClassificationConfidence = 'high' | 'medium' | 'low'
 export type ContentType = 'cache' | 'logs' | 'settings' | 'savedData' | 'regularFiles' | 'mixed' | 'rollback' | 'updates' | 'unknown'
@@ -22,16 +34,19 @@ export interface TargetClassification {
 export interface ScanTarget {
   id: string
   nameKey: string
+  nameSuffix?: string
   descriptionKey: string
   path: string
-  category: string
+  category: TargetCategory
   risk: RiskLevel
   kind: ScanKind
   requiresAdmin: boolean
   selectedByDefault: boolean
   size: number
+  sizeUnknown?: boolean
   fileCount: number
   folderCount: number
+  minFileAgeDays?: number
   modifiedAt?: string
   reason?: string
   classification?: TargetClassification
@@ -41,6 +56,8 @@ export interface ScanTarget {
 export interface ScanOptions {
   includeSafe: boolean
   includeApps: boolean
+  includeDevelopment: boolean
+  includeGames: boolean
   includeOrphans: boolean
   includeSystem: boolean
   minOrphanAgeDays: number
@@ -63,6 +80,7 @@ export interface CleanRequest {
 export interface CleanResultItem {
   id: string
   freedBytes: number
+  skippedFiles: number
   success: boolean
   error?: string
 }

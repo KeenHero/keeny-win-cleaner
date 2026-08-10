@@ -24,6 +24,8 @@ const snackbarText = ref('')
 const options = ref<ScanOptions>({
   includeSafe: true,
   includeApps: true,
+  includeDevelopment: true,
+  includeGames: true,
   includeOrphans: true,
   includeSystem: false,
   minOrphanAgeDays: 45,
@@ -60,11 +62,27 @@ function formatDate(value: string): string {
 }
 
 function targetName(target: ScanTarget): string {
-  return target.id.startsWith('orphan:') ? target.nameKey : t(target.nameKey)
+  const name = target.id.startsWith('orphan:') ? target.nameKey : t(target.nameKey)
+  return target.nameSuffix ? `${name} - ${target.nameSuffix}` : name
+}
+
+function targetSize(target: ScanTarget): string {
+  return target.sizeUnknown ? t('results.sizeUnknown') : formatBytes(target.size)
+}
+
+function ageHint(target: ScanTarget): string {
+  if (!target.minFileAgeDays) return ''
+  return target.minFileAgeDays === 1
+    ? t('results.ageFilterSingle')
+    : t('results.ageFilter', { days: target.minFileAgeDays })
+}
+
+function isSelectable(target: ScanTarget): boolean {
+  return target.status === 'ready' && (target.size > 0 || Boolean(target.sizeUnknown))
 }
 
 function toggleTarget(target: ScanTarget): void {
-  if (target.status !== 'ready' || target.size === 0) return
+  if (!isSelectable(target)) return
   const next = new Set(selectedIds.value)
   if (next.has(target.id)) next.delete(target.id)
   else next.add(target.id)
@@ -74,16 +92,14 @@ function toggleTarget(target: ScanTarget): void {
 function selectSafe(): void {
   selectedIds.value = new Set(
     (scanResult.value?.targets ?? [])
-      .filter((target) => target.risk === 'safe' && target.status === 'ready' && target.size > 0)
+      .filter((target) => target.risk === 'safe' && isSelectable(target))
       .map((target) => target.id),
   )
 }
 
 function targetsForGroup(group: SelectionGroup): ScanTarget[] {
-  return (scanResult.value?.targets ?? []).filter((target) => {
-    const selectable = target.status === 'ready' && target.size > 0
-    return selectable && (group === 'all' || target.risk === group)
-  })
+  return (scanResult.value?.targets ?? [])
+    .filter((target) => isSelectable(target) && (group === 'all' || target.risk === group))
 }
 
 function isGroupSelected(group: SelectionGroup): boolean {
@@ -139,7 +155,12 @@ async function clean(): Promise<void> {
       confirmation: confirmation.value,
     })
     const failed = result.items.filter((item) => !item.success).length
-    snackbarText.value = `${t('clean.success', { size: formatBytes(result.totalFreed) })}${failed ? ` ${t('clean.partial')}` : ''}`
+    const skipped = result.items.reduce((sum, item) => sum + item.skippedFiles, 0)
+    snackbarText.value = [
+      t('clean.success', { size: formatBytes(result.totalFreed) }),
+      failed ? t('clean.partial') : '',
+      skipped ? t('clean.skipped', { count: skipped }) : '',
+    ].filter(Boolean).join(' ')
     snackbar.value = true
     confirmDialog.value = false
     confirmation.value = ''
@@ -340,6 +361,16 @@ onBeforeUnmount(() => stopProgressListener?.())
                 <span class="option-copy"><strong>{{ t('scan.apps') }}</strong><small>{{ t('scan.appsHint') }}</small></span>
               </label>
               <label class="scan-option">
+                <v-checkbox v-model="options.includeDevelopment" color="primary" hide-details />
+                <span class="option-icon review"><v-icon icon="mdi-code-tags" /></span>
+                <span class="option-copy"><strong>{{ t('scan.development') }}</strong><small>{{ t('scan.developmentHint') }}</small></span>
+              </label>
+              <label class="scan-option">
+                <v-checkbox v-model="options.includeGames" color="primary" hide-details />
+                <span class="option-icon review"><v-icon icon="mdi-gamepad-variant-outline" /></span>
+                <span class="option-copy"><strong>{{ t('scan.games') }}</strong><small>{{ t('scan.gamesHint') }}</small></span>
+              </label>
+              <label class="scan-option">
                 <v-checkbox v-model="options.includeOrphans" color="primary" hide-details />
                 <span class="option-icon advanced"><v-icon icon="mdi-folder-question-outline" /></span>
                 <span class="option-copy"><strong>{{ t('scan.orphans') }}</strong><small>{{ t('scan.orphansHint') }}</small></span>
@@ -420,9 +451,13 @@ onBeforeUnmount(() => stopProgressListener?.())
             </div>
           </div>
 
-          <div v-if="scanResult.warnings.length" class="heuristic-note">
+          <div v-if="scanResult.warnings.includes('orphan-detection-is-heuristic')" class="heuristic-note">
             <v-icon icon="mdi-information-outline" />
             <span>{{ t('results.heuristic') }}</span>
+          </div>
+          <div v-if="scanResult.warnings.includes('size-unknown-for-windows-handlers')" class="heuristic-note">
+            <v-icon icon="mdi-help-circle-outline" />
+            <span>{{ t('results.unknownSize') }}</span>
           </div>
 
           <div class="group-selection">
@@ -457,14 +492,14 @@ onBeforeUnmount(() => stopProgressListener?.())
               v-for="target in filteredTargets"
               :key="target.id"
               class="target-row"
-              :class="{ selected: selectedIds.has(target.id), unavailable: target.status !== 'ready' || target.size === 0 }"
+              :class="{ selected: selectedIds.has(target.id), unavailable: !isSelectable(target) }"
               @click="toggleTarget(target)"
             >
               <input
                 class="target-checkbox"
                 type="checkbox"
                 :checked="selectedIds.has(target.id)"
-                :disabled="target.status !== 'ready' || target.size === 0"
+                :disabled="!isSelectable(target)"
                 :aria-label="targetName(target)"
                 @click.stop="toggleTarget(target)"
               />
@@ -476,6 +511,14 @@ onBeforeUnmount(() => stopProgressListener?.())
                   <span v-if="target.status === 'denied'" class="denied-pill">{{ t('results.denied') }}</span>
                 </div>
                 <p>{{ t(target.descriptionKey) }}</p>
+                <p v-if="target.reason" class="target-reason">
+                  <v-icon icon="mdi-alert-outline" size="14" />
+                  {{ t(`reason.${target.reason}`) }}
+                </p>
+                <p v-if="ageHint(target)" class="target-age-hint">
+                  <v-icon icon="mdi-clock-outline" size="14" />
+                  {{ ageHint(target) }}
+                </p>
                 <div v-if="target.classification" class="classification-block">
                   <div class="classification-chips">
                     <span class="classification-chip">
@@ -504,9 +547,9 @@ onBeforeUnmount(() => stopProgressListener?.())
                 </button>
               </div>
               <div class="target-meta">
-                <strong>{{ formatBytes(target.size) }}</strong>
-                <span>{{ t('results.files', { count: target.fileCount }) }}</span>
-                <span>{{ t('results.folders', { count: target.folderCount }) }}</span>
+                <strong :class="{ 'size-unknown': target.sizeUnknown }">{{ targetSize(target) }}</strong>
+                <span v-if="!target.sizeUnknown">{{ t('results.files', { count: target.fileCount }) }}</span>
+                <span v-if="!target.sizeUnknown">{{ t('results.folders', { count: target.folderCount }) }}</span>
               </div>
             </article>
           </div>

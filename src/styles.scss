@@ -855,6 +855,29 @@ a {
   font-size: 9.5px;
 }
 
+.app-shell .target-main p.target-reason,
+.app-shell .target-main p.target-age-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  font-size: 8.5px;
+}
+
+.app-shell .target-main p.target-reason {
+  color: #ffc76b;
+}
+
+.app-shell .target-main p.target-age-hint {
+  color: #7e948b;
+}
+
+.target-meta strong.size-unknown {
+  color: #8fa79d;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .classification-block {
   display: grid;
   gap: 4px;

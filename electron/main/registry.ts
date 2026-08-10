@@ -26,6 +26,54 @@ function queryValues(key: string): string[] {
   }
 }
 
+export function queryValue(key: string, name: string): string | undefined {
+  try {
+    const output = execFileSync('reg.exe', ['query', key, '/v', name], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000,
+    })
+    const pattern = new RegExp(`^\\s+${name}\\s+REG_\\w+\\s+(.+)$`, 'i')
+    return output
+      .split(/\r?\n/)
+      .map((line) => line.match(pattern)?.[1]?.trim())
+      .find((value): value is string => Boolean(value))
+  } catch {
+    return undefined
+  }
+}
+
+export function querySubKeys(key: string): string[] {
+  try {
+    const output = execFileSync('reg.exe', ['query', key], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000,
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    return output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.toLocaleUpperCase('en-US').startsWith('HK'))
+      .map((line) => line.slice(line.lastIndexOf('\\') + 1))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+export function getSteamPath(): string | undefined {
+  const value = queryValue('HKCU\\Software\\Valve\\Steam', 'SteamPath')
+  return value ? path.normalize(value) : undefined
+}
+
+// Steam stores additional library roots in steamapps\libraryfolders.vdf
+export function parseLibraryFolders(content: string): string[] {
+  return [...content.matchAll(/"path"\s+"([^"]+)"/gi)]
+    .map((match) => path.normalize(match[1].replace(/\\\\/g, '\\')))
+    .filter((value, index, all) => all.indexOf(value) === index)
+}
+
 function queryPowerShell<T>(script: string): T[] {
   try {
     const output = execFileSync(

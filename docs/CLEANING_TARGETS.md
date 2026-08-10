@@ -26,17 +26,125 @@ Microsoft dokumentiert `%LOCALAPPDATA%` als benutzerspezifischen Ordner und `%AP
 
 Quelle: [Microsoft Learn: Windows Known Folder IDs](https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid)
 
+## Mindestalter für Dateien
+
+Einzelne Ziele löschen nur Dateien ab einem Mindestalter. Damit bleiben Arbeitsdateien laufender Installationsprogramme und aktiver Anwendungen unberührt.
+
+| Ziel | Mindestalter |
+| --- | --- |
+| Benutzer Temp | 1 Tag |
+| Windows Temp | 1 Tag |
+| Setup und Wartungsprotokolle | 7 Tage |
+| Diagnoseablaufverfolgungen | 7 Tage |
+
+Neuere Dateien werden weder in der Größe gezählt noch gelöscht. Ordner, die danach noch Dateien enthalten, bleiben bestehen.
+
 ## Ziele mit Prüfung
 
 | Bereich | Typischer Pfad | Risiko |
 | --- | --- | --- |
-| Edge Cache | `%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache` | Der Browser sollte geschlossen sein. |
-| Chrome Cache | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache` | Der Browser sollte geschlossen sein. |
+| Browsercache je Profil | `...\User Data\<Profil>\Cache\Cache_Data`, `Code Cache`, `GPUCache`, `ShaderCache`, `Service Worker\CacheStorage` | Der Browser sollte geschlossen sein. |
+| Browser Shadercache | `...\User Data\ShaderCache`, `GrShaderCache`, `GraphiteDawnCache` | Profilübergreifend. |
+| Firefox Cache je Profil | `%LOCALAPPDATA%\Mozilla\Firefox\Profiles\<Profil>\cache2` | Der Browser sollte geschlossen sein. |
 | Discord Cache | `%APPDATA%\discord\Cache` | Discord sollte geschlossen sein. |
+| Microsoft Teams Cache | `%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams` | Teams sollte geschlossen sein. |
+| Spotify Cache | `%LOCALAPPDATA%\Spotify\Data` | Heruntergeladene Titel werden neu geladen. |
 | Windows Temp | `%WINDIR%\Temp` | Administratorrechte können nötig sein. Aktive Dateien werden übersprungen. |
 | Übermittlungsoptimierung | `%ProgramData%\Microsoft\Windows\DeliveryOptimization\Cache` | Erweiterter Bereich. Die Windows Speicheroptimierung bleibt der bevorzugte Weg. |
 | Frühere Windows Installation | `%SystemDrive%\Windows.old` | Wird nur bei vorhandenem Ordner gezeigt. Die unterstützte Autoclean Funktion entfernt die Rückkehrmöglichkeit zur vorherigen Windows Version dauerhaft. |
 | Windows Komponentenspeicher | `%WINDIR%\WinSxS` | Wird nur gezeigt, wenn DISM eine Bereinigung empfiehlt. Die Bereinigung verwendet `StartComponentCleanup`. |
+
+Erkannt werden die Profile `Default`, `Profile 1` bis `Profile n` sowie `Guest Profile` von Edge, Chrome, Brave, Vivaldi, Opera und Opera GX, dazu alle Firefox Profile. Verlauf, Cookies, Lesezeichen, Passwörter, Sitzungen und `Local Storage` sind keine Ziele.
+
+## Entwickler und Buildcaches
+
+| Bereich | Typischer Pfad |
+| --- | --- |
+| npm | `%LOCALAPPDATA%\npm-cache` |
+| pnpm | `%LOCALAPPDATA%\pnpm\store` |
+| Yarn | `%LOCALAPPDATA%\Yarn\Cache` |
+| pip | `%LOCALAPPDATA%\pip\Cache` |
+| NuGet | `%USERPROFILE%\.nuget\packages`, `%LOCALAPPDATA%\NuGet\v3-cache` |
+| Gradle | `%USERPROFILE%\.gradle\caches` |
+| Maven | `%USERPROFILE%\.m2\repository` |
+| Cargo | `%USERPROFILE%\.cargo\registry` |
+| Go | `%LOCALAPPDATA%\go-build` |
+| Electron | `%LOCALAPPDATA%\electron-builder\Cache`, `%LOCALAPPDATA%\electron\Cache` |
+| Visual Studio Code | `%APPDATA%\Code\Cache`, `CachedData`, `GPUCache`, `logs` |
+| Visual Studio | `%LOCALAPPDATA%\Microsoft\VisualStudio\<Instanz>\ComponentModelCache` |
+| Unity | `%LOCALAPPDATA%\Unity\cache` |
+| Unreal Engine | `%LOCALAPPDATA%\UnrealEngine\Common\DerivedDataCache` |
+
+Alle Inhalte werden beim nächsten Build oder Befehl neu geladen oder neu erzeugt. Diese Ziele sind niemals vorausgewählt, weil der nächste Build danach länger dauert.
+
+## Spiele und Shadercaches
+
+| Bereich | Typischer Pfad |
+| --- | --- |
+| Steam Shadercache | `<Bibliothek>\steamapps\shadercache` |
+| Steam Weboberfläche | `<Steam>\config\htmlcache`, `%LOCALAPPDATA%\Steam\htmlcache` |
+| Epic Games Launcher | `%LOCALAPPDATA%\EpicGamesLauncher\Saved\webcache*` |
+| Battle.net | `%LOCALAPPDATA%\Battle.net\Cache` |
+| EA App | `%LOCALAPPDATA%\Electronic Arts\EA Desktop\cache` |
+| GOG Galaxy | `%ProgramData%\GOG.com\Galaxy\webcache` |
+| NVIDIA | `%LOCALAPPDATA%\NVIDIA\DXCache`, `GLCache`, `OptixCache` |
+| AMD | `%LOCALAPPDATA%\AMD\DxCache`, `DxcCache`, `GLCache`, `VkCache` |
+| Intel | `%LOCALAPPDATA%\Intel\ShaderCache` |
+
+Der Steam Pfad stammt aus `HKCU\Software\Valve\Steam\SteamPath`. Weitere Bibliotheken auf anderen Laufwerken werden aus `steamapps\libraryfolders.vdf` gelesen. Installierte Spiele, Spielstände und `steamapps\common` sind keine Ziele.
+
+## Absturzabbilder, Protokolle und Updatereste
+
+| Bereich | Typischer Pfad | Hinweis |
+| --- | --- | --- |
+| Speicherabbild | `%WINDIR%\MEMORY.DMP` | Kann so groß sein wie der Arbeitsspeicher. |
+| Minidumps | `%WINDIR%\Minidump` | Danach ist keine Bluescreen Analyse mehr möglich. |
+| Systemweite Fehlerberichte | `%ProgramData%\Microsoft\Windows\WER\ReportQueue`, `ReportArchive` | Ergänzt das Benutzerziel. |
+| Setup und Wartungsprotokolle | `%WINDIR%\Panther`, `%WINDIR%\Logs\CBS`, `%WINDIR%\Logs\DISM` | Erst ab 7 Tagen Alter. |
+| Reste von Funktionsupdates | `%SystemDrive%\$WinREAgent`, `%SystemDrive%\ESD\Download` | Reste unterbrochener Updates. |
+| Diagnoseablaufverfolgungen | `%ProgramData%\Microsoft\Diagnosis\ETLLogs` | Erst ab 7 Tagen Alter. |
+
+Alle Ziele dieser Gruppe sind erweitert und benötigen Administratorrechte.
+
+## Papierkorb
+
+Der Papierkorb jedes festen Laufwerks wird gemessen, aber nicht direkt gelöscht. Die Leerung verwendet die unterstützte Windows Funktion:
+
+```text
+Clear-RecycleBin -Force
+```
+
+Der Papierkorb enthält vom Benutzer gelöschte Dateien. Das Ziel ist erweitert, niemals vorausgewählt und trägt einen eigenen Warnhinweis. Papierkörbe anderer Benutzerkonten sind nicht lesbar und werden übersprungen.
+
+## Windows Datenträgerbereinigung
+
+Windows verwaltet mehrere Bereiche über eigene Handler. Die Liste steht unter:
+
+```text
+HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches
+```
+
+KeenyWinCleaner bietet nur diese Handler an:
+
+| Handler | Bedeutung |
+| --- | --- |
+| `Update Cleanup` | Ersetzte Windows Update Dateien |
+| `Device Driver Packages` | Von Windows ersetzte Treiberversionen |
+| `Windows ESD installation files` | Installationsabbilder für Zurücksetzen und Neuinstallation |
+| `Downloaded Program Files` | Alte ActiveX und Java Komponenten |
+| `Old ChkDsk Files` | Von der Datenträgerprüfung gerettete Fragmente |
+| `RetailDemo Offline Content` | Inhalte des Vorführmodus |
+
+Ablauf einer Bereinigung:
+
+1. Für jeden vorhandenen Handler wird `StateFlags0099` auf `0` gesetzt. Damit kann kein Flag aus einem früheren Lauf aktiv bleiben.
+2. Für die ausgewählten Handler wird `StateFlags0099` auf `2` gesetzt.
+3. Ein einziger Durchlauf startet mit `cleanmgr.exe /sagerun:99`.
+4. Der freigegebene Platz wird über den freien Speicher vor und nach dem Lauf gemessen.
+
+`DownloadsFolder`, `Recycle Bin`, `Previous Installations`, `Temporary Files` und `Delivery Optimization Files` sind bewusst nicht Teil dieser Liste. Für einige dieser Bereiche gibt es eigene Ziele, der Downloads Ordner wird niemals angeboten.
+
+Windows meldet für Handler vorab keine Größe. Ist ein messbarer Ordner bekannt, zeigt die Oberfläche dessen Größe als Schätzung an, andernfalls den Hinweis, dass die Größe unbekannt ist.
 
 `Windows.old` und `WinSxS` werden niemals direkt gelöscht. KeenyWinCleaner verwendet dafür ausschließlich `cleanmgr /autoclean` und DISM. Beide Ziele sind erweitert, benötigen Administratorrechte und sind nicht vorausgewählt.
 
@@ -91,11 +199,13 @@ Quelle: [Microsoft Learn: ApplicationData](https://learn.microsoft.com/en-us/uwp
 - Downloads
 - Persönliche Dokumente, Bilder, Videos und Musik
 - OneDrive Dateien
-- Papierkorb
-- Windows Update Download Cache außerhalb der Übermittlungsoptimierung
+- Papierkorb, dieser wird ausschließlich über `Clear-RecycleBin` geleert
+- Windows Update Download Cache, dieser läuft ausschließlich über die Windows Datenträgerbereinigung
 - Wiederherstellungspunkte
 - Prefetch
-- Registry Einträge
-- Treiberpakete
+- Registry Einträge außerhalb der Handler Flags der Datenträgerbereinigung
+- Treiberpakete, diese laufen ausschließlich über die Windows Datenträgerbereinigung
+- Browserverlauf, Cookies, Lesezeichen, Passwörter und Sitzungen
+- Installierte Spiele, Spielstände und Spielbibliotheken
 
 Diese Bereiche können persönliche Daten oder aktive Windows Komponenten enthalten. KeenyWinCleaner öffnet für unterstützte Systemaufgaben die Windows Speichereinstellungen.

@@ -1,38 +1,36 @@
 import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import type {
   CleanRequest,
   CleanResult,
   CleanResultItem,
-  RiskLevel,
   ScanOptions,
   ScanSummary,
   ScanTarget,
-  TargetClassification,
 } from '../../src/types'
 import { createContentAnalyzer, type ContentAnalyzer } from './classifier'
 import { getInstalledAppTokens, getRunningProcessTokens, isProbablyInstalled } from './registry'
-
-interface TargetDefinition {
-  id: string
-  nameKey: string
-  descriptionKey: string
-  path: string
-  category: string
-  risk: RiskLevel
-  kind: 'contents' | 'folder'
-  requiresAdmin?: boolean
-  selectedByDefault?: boolean
-  directFilePattern?: RegExp
-  cleanAction?: 'windows-autoclean' | 'component-cleanup'
-  virtualSize?: number
-  virtualFiles?: number
-  reason?: string
-  classification?: TargetClassification
-}
+import {
+  buildBrowserTargets,
+  buildDeveloperTargets,
+  buildDiskCleanupTargets,
+  buildGameTargets,
+  buildRecycleBinTarget,
+  developerTargets,
+  gameTargets,
+  localAppData,
+  localLowAppData,
+  roamingAppData,
+  standardTargets,
+  systemDrive,
+  systemLogTargets,
+  targetSources,
+  volumeCachesKey,
+  windowsDir,
+  type TargetDefinition,
+} from './targets'
 
 interface MeasuredPath {
   size: number
@@ -42,19 +40,26 @@ interface MeasuredPath {
   latestModified?: Date
 }
 
+interface MeasureOptions {
+  directFilePattern?: RegExp
+  analyzer?: ContentAnalyzer
+  relativePath?: string
+  olderThan?: number
+}
+
+interface RemovalResult {
+  freed: number
+  skipped: number
+}
+
 interface ApprovedTarget {
   definition: TargetDefinition
   allowedRoots: string[]
 }
 
-const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local')
-const roamingAppData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
-const localLowAppData = path.join(os.homedir(), 'AppData', 'LocalLow')
-const programData = process.env.ProgramData ?? 'C:\\ProgramData'
-const windowsDir = process.env.WINDIR ?? 'C:\\Windows'
-const userTemp = process.env.TEMP ?? path.join(localAppData, 'Temp')
-const systemDrive = path.parse(windowsDir).root
 const execFileAsync = promisify(execFile)
+const diskCleanupFlagName = 'StateFlags0099'
+const diskCleanupRunId = '99'
 
 const protectedAppDataNames = new Set([
   'application data',
@@ -71,143 +76,6 @@ const protectedAppDataNames = new Set([
   'virtualstore',
 ])
 
-const standardTargets: TargetDefinition[] = [
-  {
-    id: 'user-temp',
-    nameKey: 'targets.userTemp.name',
-    descriptionKey: 'targets.userTemp.description',
-    path: userTemp,
-    category: 'temporary',
-    risk: 'safe',
-    kind: 'contents',
-    selectedByDefault: true,
-  },
-  {
-    id: 'crash-dumps',
-    nameKey: 'targets.crashDumps.name',
-    descriptionKey: 'targets.crashDumps.description',
-    path: path.join(localAppData, 'CrashDumps'),
-    category: 'reports',
-    risk: 'safe',
-    kind: 'contents',
-    selectedByDefault: true,
-  },
-  {
-    id: 'directx-shader-cache',
-    nameKey: 'targets.shaderCache.name',
-    descriptionKey: 'targets.shaderCache.description',
-    path: path.join(localAppData, 'D3DSCache'),
-    category: 'cache',
-    risk: 'safe',
-    kind: 'contents',
-    selectedByDefault: true,
-  },
-  {
-    id: 'windows-error-reports',
-    nameKey: 'targets.errorReports.name',
-    descriptionKey: 'targets.errorReports.description',
-    path: path.join(localAppData, 'Microsoft', 'Windows', 'WER'),
-    category: 'reports',
-    risk: 'safe',
-    kind: 'contents',
-    selectedByDefault: true,
-  },
-  {
-    id: 'thumbnail-cache',
-    nameKey: 'targets.thumbnailCache.name',
-    descriptionKey: 'targets.thumbnailCache.description',
-    path: path.join(localAppData, 'Microsoft', 'Windows', 'Explorer'),
-    category: 'cache',
-    risk: 'safe',
-    kind: 'contents',
-    selectedByDefault: true,
-    directFilePattern: /^(thumbcache|iconcache).*\.db$/i,
-  },
-  {
-    id: 'edge-cache',
-    nameKey: 'targets.edgeCache.name',
-    descriptionKey: 'targets.edgeCache.description',
-    path: path.join(localAppData, 'Microsoft', 'Edge', 'User Data', 'Default', 'Cache'),
-    category: 'browser',
-    risk: 'review',
-    kind: 'contents',
-  },
-  {
-    id: 'chrome-cache',
-    nameKey: 'targets.chromeCache.name',
-    descriptionKey: 'targets.chromeCache.description',
-    path: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'Default', 'Cache'),
-    category: 'browser',
-    risk: 'review',
-    kind: 'contents',
-  },
-  {
-    id: 'discord-cache',
-    nameKey: 'targets.discordCache.name',
-    descriptionKey: 'targets.discordCache.description',
-    path: path.join(roamingAppData, 'discord', 'Cache'),
-    category: 'apps',
-    risk: 'review',
-    kind: 'contents',
-  },
-  {
-    id: 'windows-temp',
-    nameKey: 'targets.windowsTemp.name',
-    descriptionKey: 'targets.windowsTemp.description',
-    path: path.join(windowsDir, 'Temp'),
-    category: 'system',
-    risk: 'advanced',
-    kind: 'contents',
-    requiresAdmin: true,
-    classification: {
-      applicationType: 'system',
-      applicationConfidence: 'high',
-      contentType: 'cache',
-      contentConfidence: 'high',
-      evidence: ['windowsManaged', 'temporaryFolder'],
-      breakdown: [],
-    },
-  },
-  {
-    id: 'delivery-optimization',
-    nameKey: 'targets.deliveryOptimization.name',
-    descriptionKey: 'targets.deliveryOptimization.description',
-    path: path.join(programData, 'Microsoft', 'Windows', 'DeliveryOptimization', 'Cache'),
-    category: 'system',
-    risk: 'advanced',
-    kind: 'contents',
-    requiresAdmin: true,
-    classification: {
-      applicationType: 'system',
-      applicationConfidence: 'high',
-      contentType: 'cache',
-      contentConfidence: 'high',
-      evidence: ['windowsManaged', 'updateCache'],
-      breakdown: [],
-    },
-  },
-  {
-    id: 'previous-windows-installation',
-    nameKey: 'targets.previousWindows.name',
-    descriptionKey: 'targets.previousWindows.description',
-    path: path.join(systemDrive, 'Windows.old'),
-    category: 'system',
-    risk: 'advanced',
-    kind: 'folder',
-    requiresAdmin: true,
-    cleanAction: 'windows-autoclean',
-    reason: 'removes-windows-rollback',
-    classification: {
-      applicationType: 'system',
-      applicationConfidence: 'high',
-      contentType: 'rollback',
-      contentConfidence: 'high',
-      evidence: ['windowsManaged', 'previousWindows'],
-      breakdown: [],
-    },
-  },
-]
-
 const approvedTargets = new Map<string, ApprovedTarget>()
 
 function canonical(candidate: string): string {
@@ -220,123 +88,185 @@ export function isPathWithin(candidate: string, root: string): boolean {
   return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(`${resolvedRoot}${path.sep}`)
 }
 
-async function measure(
-  candidate: string,
-  directFilePattern?: RegExp,
-  analyzer?: ContentAnalyzer,
-  relativePath = '',
-): Promise<MeasuredPath> {
+export function ageCutoff(minFileAgeDays: number | undefined, now = Date.now()): number | undefined {
+  if (!minFileAgeDays || minFileAgeDays <= 0) return undefined
+  return now - minFileAgeDays * 24 * 60 * 60 * 1000
+}
+
+interface MeasureJob {
+  directory: string
+  relativePath: string
+  directFilePattern?: RegExp
+}
+
+const measureConcurrency = 12
+
+// Directories are walked by a small pool of workers. Every accumulated value is
+// order independent, so the result does not depend on how the pool schedules work.
+async function measure(candidate: string, options: MeasureOptions = {}): Promise<MeasuredPath> {
+  const { directFilePattern, analyzer, relativePath = '', olderThan } = options
   const result: MeasuredPath = { size: 0, files: 0, folders: 0, denied: false }
-  let entries: import('node:fs').Dirent[]
-  try {
-    entries = await fs.readdir(candidate, { withFileTypes: true })
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === 'EACCES' || code === 'EPERM') result.denied = true
-    return result
-  }
+  const queue: MeasureJob[] = [{ directory: candidate, relativePath, directFilePattern }]
+  let active = 0
 
-  for (const entry of entries) {
-    if (directFilePattern && !entry.isFile()) continue
-    if (directFilePattern && !directFilePattern.test(entry.name)) continue
-
-    const entryPath = path.join(candidate, entry.name)
-    const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name
+  async function handle(job: MeasureJob): Promise<void> {
+    let entries: import('node:fs').Dirent[]
     try {
-      const stat = await fs.lstat(entryPath)
-      if (stat.isSymbolicLink()) continue
-      if (!result.latestModified || stat.mtime > result.latestModified) result.latestModified = stat.mtime
-
-      if (stat.isDirectory()) {
-        analyzer?.addDirectory(entryRelativePath)
-        result.folders += 1
-        const nested = await measure(entryPath, undefined, analyzer, entryRelativePath)
-        result.size += nested.size
-        result.files += nested.files
-        result.folders += nested.folders
-        result.denied ||= nested.denied
-        if (nested.latestModified && (!result.latestModified || nested.latestModified > result.latestModified)) {
-          result.latestModified = nested.latestModified
-        }
-      } else if (stat.isFile()) {
-        result.size += stat.size
-        result.files += 1
-        analyzer?.addFile(entryRelativePath, stat.size)
-      }
+      entries = await fs.readdir(job.directory, { withFileTypes: true })
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code === 'EACCES' || code === 'EPERM') result.denied = true
+      return
+    }
+
+    for (const entry of entries) {
+      if (job.directFilePattern && !entry.isFile()) continue
+      if (job.directFilePattern && !job.directFilePattern.test(entry.name)) continue
+
+      const entryPath = path.join(job.directory, entry.name)
+      const entryRelativePath = job.relativePath ? path.join(job.relativePath, entry.name) : entry.name
+      try {
+        const stat = await fs.lstat(entryPath)
+        if (stat.isSymbolicLink()) continue
+        if (!result.latestModified || stat.mtime > result.latestModified) result.latestModified = stat.mtime
+
+        if (stat.isDirectory()) {
+          analyzer?.addDirectory(entryRelativePath)
+          result.folders += 1
+          queue.push({ directory: entryPath, relativePath: entryRelativePath })
+        } else if (stat.isFile()) {
+          if (olderThan !== undefined && stat.mtimeMs > olderThan) continue
+          result.size += stat.size
+          result.files += 1
+          analyzer?.addFile(entryRelativePath, stat.size)
+        }
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === 'EACCES' || code === 'EPERM') result.denied = true
+      }
     }
   }
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const job = queue.shift()
+      if (!job) {
+        if (!active) return
+        await new Promise((resolve) => setImmediate(resolve))
+        continue
+      }
+      active += 1
+      try {
+        await handle(job)
+      } finally {
+        active -= 1
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: measureConcurrency }, () => worker()))
   return result
 }
 
+function buildScanTarget(
+  definition: TargetDefinition,
+  status: ScanTarget['status'],
+  measured?: Partial<ScanTarget>,
+): ScanTarget {
+  return {
+    id: definition.id,
+    nameKey: definition.nameKey,
+    nameSuffix: definition.nameSuffix,
+    descriptionKey: definition.descriptionKey,
+    path: definition.path,
+    category: definition.category,
+    risk: definition.risk,
+    kind: definition.kind,
+    requiresAdmin: Boolean(definition.requiresAdmin),
+    selectedByDefault: Boolean(definition.selectedByDefault),
+    size: 0,
+    sizeUnknown: definition.sizeUnknown,
+    fileCount: 0,
+    folderCount: 0,
+    minFileAgeDays: definition.minFileAgeDays,
+    reason: definition.reason,
+    classification: definition.classification,
+    status,
+    ...measured,
+  }
+}
+
+async function scanFileTarget(definition: TargetDefinition): Promise<ScanTarget> {
+  const stat = await fs.lstat(definition.path)
+  if (stat.isSymbolicLink() || !stat.isFile()) return buildScanTarget(definition, 'protected')
+  return buildScanTarget(definition, 'ready', {
+    size: stat.size,
+    fileCount: 1,
+    modifiedAt: stat.mtime.toISOString(),
+  })
+}
+
 async function toScanTarget(definition: TargetDefinition): Promise<ScanTarget> {
-  const {
-    directFilePattern: _directFilePattern,
-    cleanAction: _cleanAction,
-    virtualSize,
-    virtualFiles,
-    reason,
-    ...publicDefinition
-  } = definition
   try {
-    const stat = await fs.lstat(definition.path)
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      return emptyTarget(definition, 'protected')
+    if (definition.kind === 'file') return await scanFileTarget(definition)
+
+    const sources = targetSources(definition)
+    const readable: string[] = []
+    for (const source of sources) {
+      try {
+        const stat = await fs.lstat(source)
+        if (stat.isDirectory() && !stat.isSymbolicLink()) readable.push(source)
+      } catch {
+        continue
+      }
+    }
+    if (!readable.length) return buildScanTarget(definition, 'missing')
+
+    // Handlers without a measurable folder are offered without a size estimate.
+    if (definition.sizeUnknown) return buildScanTarget(definition, 'ready')
+
+    if (definition.virtualSize !== undefined) {
+      const stat = await fs.lstat(readable[0])
+      return buildScanTarget(definition, 'ready', {
+        size: definition.virtualSize,
+        fileCount: definition.virtualFiles ?? 0,
+        modifiedAt: stat.mtime.toISOString(),
+      })
     }
 
     const analyzer = definition.id.startsWith('orphan:')
       ? createContentAnalyzer(path.basename(definition.path))
       : undefined
-    const measured = virtualSize === undefined
-      ? await measure(definition.path, definition.directFilePattern, analyzer)
-      : {
-          size: virtualSize,
-          files: virtualFiles ?? 0,
-          folders: 0,
-          denied: false,
-          latestModified: stat.mtime,
-        }
-    const modifiedAt = measured.latestModified?.toISOString() ?? stat.mtime.toISOString()
-    return {
-      ...publicDefinition,
-      requiresAdmin: Boolean(definition.requiresAdmin),
-      selectedByDefault: Boolean(definition.selectedByDefault),
-      size: measured.size,
-      fileCount: measured.files,
-      folderCount: measured.folders,
-      modifiedAt,
-      reason,
-      classification: definition.classification ?? analyzer?.finish(measured.size),
-      status: measured.denied ? 'denied' : 'ready',
+    const olderThan = ageCutoff(definition.minFileAgeDays)
+    const total: MeasuredPath = { size: 0, files: 0, folders: 0, denied: false }
+    for (const source of readable) {
+      const measured = await measure(source, {
+        directFilePattern: definition.directFilePattern,
+        analyzer,
+        olderThan,
+      })
+      total.size += measured.size
+      total.files += measured.files
+      total.folders += measured.folders
+      total.denied ||= measured.denied
+      if (measured.latestModified && (!total.latestModified || measured.latestModified > total.latestModified)) {
+        total.latestModified = measured.latestModified
+      }
     }
+
+    const denied = total.denied && !definition.tolerateDenied
+    return buildScanTarget(definition, denied ? 'denied' : 'ready', {
+      size: total.size,
+      fileCount: total.files,
+      folderCount: total.folders,
+      modifiedAt: total.latestModified?.toISOString(),
+      classification: definition.classification ?? analyzer?.finish(total.size),
+    })
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ENOENT') return emptyTarget(definition, 'missing')
-    if (code === 'EACCES' || code === 'EPERM') return emptyTarget(definition, 'denied')
-    return emptyTarget(definition, 'error')
-  }
-}
-
-function emptyTarget(definition: TargetDefinition, status: ScanTarget['status']): ScanTarget {
-  const {
-    directFilePattern: _directFilePattern,
-    cleanAction: _cleanAction,
-    virtualSize: _virtualSize,
-    virtualFiles: _virtualFiles,
-    reason,
-    ...publicDefinition
-  } = definition
-  return {
-    ...publicDefinition,
-    requiresAdmin: Boolean(definition.requiresAdmin),
-    selectedByDefault: Boolean(definition.selectedByDefault),
-    size: 0,
-    fileCount: 0,
-    folderCount: 0,
-    reason,
-    status,
+    if (code === 'ENOENT') return buildScanTarget(definition, 'missing')
+    if (code === 'EACCES' || code === 'EPERM') return buildScanTarget(definition, 'denied')
+    return buildScanTarget(definition, 'error')
   }
 }
 
@@ -388,9 +318,13 @@ async function getComponentStoreTarget(): Promise<TargetDefinition | null> {
   }
 }
 
-function shouldIncludeTarget(target: TargetDefinition, options: ScanOptions): boolean {
+export function shouldIncludeTarget(target: TargetDefinition, options: ScanOptions): boolean {
+  if (target.category === 'development') return options.includeDevelopment
+  if (target.category === 'games') return options.includeGames
+  if (target.category === 'system' || target.category === 'logs' || target.category === 'recycle') {
+    return options.includeSystem
+  }
   if (target.risk === 'safe') return options.includeSafe
-  if (target.category === 'system') return options.includeSystem
   return options.includeApps
 }
 
@@ -442,17 +376,44 @@ async function findOrphanCandidates(minAgeDays: number): Promise<TargetDefinitio
   return candidates
 }
 
+async function collectDefinitions(options: ScanOptions): Promise<TargetDefinition[]> {
+  const definitions = [
+    ...standardTargets,
+    ...developerTargets,
+    ...gameTargets,
+    ...systemLogTargets,
+  ].filter((target) => shouldIncludeTarget(target, options))
+
+  if (options.includeApps) definitions.push(...await buildBrowserTargets())
+  if (options.includeDevelopment) definitions.push(...await buildDeveloperTargets())
+  if (options.includeGames) definitions.push(...await buildGameTargets())
+  if (options.includeSystem) {
+    definitions.push(...buildDiskCleanupTargets())
+    const recycleBin = await buildRecycleBinTarget()
+    if (recycleBin) definitions.push(recycleBin)
+    const componentStoreTarget = await getComponentStoreTarget()
+    if (componentStoreTarget) definitions.push(componentStoreTarget)
+  }
+  if (options.includeOrphans) definitions.push(...await findOrphanCandidates(options.minOrphanAgeDays))
+
+  return definitions
+}
+
+function allowedRootsFor(definition: TargetDefinition): string[] {
+  if (definition.id.startsWith('orphan:')) {
+    const root = [localAppData, roamingAppData, localLowAppData]
+      .find((candidate) => isPathWithin(definition.path, candidate))
+    return root ? [root] : []
+  }
+  return definition.kind === 'file' ? [definition.path] : targetSources(definition)
+}
+
 export async function scanSystem(
   options: ScanOptions,
   onProgress?: (progress: number) => void,
 ): Promise<ScanSummary> {
   approvedTargets.clear()
-  const definitions = standardTargets.filter((target) => shouldIncludeTarget(target, options))
-  if (options.includeSystem) {
-    const componentStoreTarget = await getComponentStoreTarget()
-    if (componentStoreTarget) definitions.push(componentStoreTarget)
-  }
-  if (options.includeOrphans) definitions.push(...await findOrphanCandidates(options.minOrphanAgeDays))
+  const definitions = await collectDefinitions(options)
 
   const targets: ScanTarget[] = []
   for (let index = 0; index < definitions.length; index += 1) {
@@ -460,10 +421,8 @@ export async function scanSystem(
     const target = await toScanTarget(definition)
     targets.push(target)
     if (target.status === 'ready') {
-      const root = target.id.startsWith('orphan:')
-        ? [localAppData, roamingAppData, localLowAppData].find((item) => isPathWithin(target.path, item))
-        : definition.path
-      if (root) approvedTargets.set(target.id, { definition, allowedRoots: [root] })
+      const allowedRoots = allowedRootsFor(definition)
+      if (allowedRoots.length) approvedTargets.set(target.id, { definition, allowedRoots })
     }
     onProgress?.(Math.round(((index + 1) / Math.max(1, definitions.length)) * 100))
   }
@@ -471,19 +430,25 @@ export async function scanSystem(
   const visibleTargets = targets
     .filter((target) => target.status !== 'missing')
     .sort((left, right) => right.size - left.size)
+  const warnings: string[] = []
+  if (options.includeOrphans) warnings.push('orphan-detection-is-heuristic')
+  if (visibleTargets.some((target) => target.sizeUnknown)) warnings.push('size-unknown-for-windows-handlers')
+
   return {
     targets: visibleTargets,
     totalSize: visibleTargets.reduce((sum, target) => sum + target.size, 0),
     totalFiles: visibleTargets.reduce((sum, target) => sum + target.fileCount, 0),
     scannedAt: new Date().toISOString(),
     partial: visibleTargets.some((target) => target.status === 'denied' || target.status === 'error'),
-    warnings: options.includeOrphans
-      ? ['orphan-detection-is-heuristic']
-      : [],
+    warnings,
   }
 }
 
-async function removeEntry(candidate: string, allowedRoots: string[]): Promise<number> {
+async function removeEntry(
+  candidate: string,
+  allowedRoots: string[],
+  olderThan?: number,
+): Promise<RemovalResult> {
   if (!allowedRoots.some((root) => isPathWithin(candidate, root))) {
     throw new Error('Path is outside the approved cleanup roots')
   }
@@ -491,78 +456,208 @@ async function removeEntry(candidate: string, allowedRoots: string[]): Promise<n
   if (stat.isSymbolicLink()) throw new Error('Links and junctions are protected')
 
   if (stat.isDirectory()) {
-    let freed = 0
-    const entries = await fs.readdir(candidate)
-    for (const entry of entries) freed += await removeEntry(path.join(candidate, entry), allowedRoots)
-    await fs.rmdir(candidate)
-    return freed
+    const result: RemovalResult = { freed: 0, skipped: 0 }
+    let entries: string[] = []
+    try {
+      entries = await fs.readdir(candidate)
+    } catch {
+      return { freed: 0, skipped: 1 }
+    }
+    for (const entry of entries) {
+      try {
+        const nested = await removeEntry(path.join(candidate, entry), allowedRoots, olderThan)
+        result.freed += nested.freed
+        result.skipped += nested.skipped
+      } catch {
+        result.skipped += 1
+      }
+    }
+    try {
+      await fs.rmdir(candidate)
+    } catch {
+      // The folder still holds locked or recent files and stays in place.
+    }
+    return result
   }
-  const size = stat.isFile() ? stat.size : 0
+
+  if (!stat.isFile()) return { freed: 0, skipped: 1 }
+  if (olderThan !== undefined && stat.mtimeMs > olderThan) return { freed: 0, skipped: 1 }
   await fs.unlink(candidate)
-  return size
+  return { freed: stat.size, skipped: 0 }
 }
 
-async function cleanTarget(approved: ApprovedTarget): Promise<number> {
-  const { definition, allowedRoots } = approved
-  const stat = await fs.lstat(definition.path)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Target is no longer a safe folder')
+async function freedSpaceOf(action: () => Promise<void>): Promise<number> {
+  const before = await fs.statfs(systemDrive)
+  await action()
+  const after = await fs.statfs(systemDrive)
+  return Math.max(0, Number(after.bavail - before.bavail) * Number(after.bsize))
+}
 
-  if (definition.cleanAction) {
-    const before = await fs.statfs(systemDrive)
-    if (definition.cleanAction === 'windows-autoclean') {
-      await execFileAsync('cleanmgr.exe', ['/d', systemDrive.slice(0, 2), '/autoclean'], {
-        windowsHide: true,
-        timeout: 30 * 60 * 1000,
-      })
-    } else {
-      await execFileAsync('dism.exe', ['/Online', '/Cleanup-Image', '/StartComponentCleanup', '/English'], {
-        windowsHide: true,
-        timeout: 60 * 60 * 1000,
-        maxBuffer: 8 * 1024 * 1024,
-      })
-    }
-    const after = await fs.statfs(systemDrive)
-    return Math.max(0, Number(after.bavail - before.bavail) * Number(after.bsize))
+async function runDiskCleanupHandlers(handlerKeys: string[]): Promise<void> {
+  const available = await execFileAsync('reg.exe', ['query', volumeCachesKey], {
+    windowsHide: true,
+    timeout: 10_000,
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  const allKeys = available.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.toLocaleUpperCase('en-US').startsWith('HK'))
+    .map((line) => line.slice(line.lastIndexOf('\\') + 1))
+    .filter(Boolean)
+
+  // Every handler is reset first so that no flag from an earlier run stays active.
+  for (const key of allKeys) {
+    const enabled = handlerKeys.includes(key)
+    await execFileAsync('reg.exe', [
+      'add',
+      `${volumeCachesKey}\\${key}`,
+      '/v',
+      diskCleanupFlagName,
+      '/t',
+      'REG_DWORD',
+      '/d',
+      enabled ? '2' : '0',
+      '/f',
+    ], { windowsHide: true, timeout: 10_000 })
   }
 
-  if (definition.kind === 'folder') return removeEntry(definition.path, allowedRoots)
+  await execFileAsync('cleanmgr.exe', ['/sagerun:' + diskCleanupRunId], {
+    windowsHide: true,
+    timeout: 60 * 60 * 1000,
+  })
+}
 
-  const entries = await fs.readdir(definition.path, { withFileTypes: true })
-  let freed = 0
-  for (const entry of entries) {
-    if (definition.directFilePattern && !entry.isFile()) continue
-    if (definition.directFilePattern && !definition.directFilePattern.test(entry.name)) continue
+async function cleanTarget(approved: ApprovedTarget): Promise<RemovalResult> {
+  const { definition, allowedRoots } = approved
+
+  if (definition.cleanAction === 'windows-autoclean' || definition.cleanAction === 'component-cleanup') {
+    const stat = await fs.lstat(definition.path)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Target is no longer a safe folder')
+    const freed = await freedSpaceOf(async () => {
+      if (definition.cleanAction === 'windows-autoclean') {
+        await execFileAsync('cleanmgr.exe', ['/d', systemDrive.slice(0, 2), '/autoclean'], {
+          windowsHide: true,
+          timeout: 30 * 60 * 1000,
+        })
+      } else {
+        await execFileAsync('dism.exe', ['/Online', '/Cleanup-Image', '/StartComponentCleanup', '/English'], {
+          windowsHide: true,
+          timeout: 60 * 60 * 1000,
+          maxBuffer: 8 * 1024 * 1024,
+        })
+      }
+    })
+    return { freed, skipped: 0 }
+  }
+
+  if (definition.cleanAction === 'recycle-bin') {
+    const freed = await freedSpaceOf(async () => {
+      await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        'Clear-RecycleBin -Force -ErrorAction SilentlyContinue',
+      ], { windowsHide: true, timeout: 30 * 60 * 1000 })
+    })
+    return { freed, skipped: 0 }
+  }
+
+  if (definition.kind === 'file') {
+    const stat = await fs.lstat(definition.path)
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('Target is no longer a regular file')
+    return removeEntry(definition.path, allowedRoots)
+  }
+
+  const olderThan = ageCutoff(definition.minFileAgeDays)
+  const result: RemovalResult = { freed: 0, skipped: 0 }
+
+  for (const source of targetSources(definition)) {
+    let stat: import('node:fs').Stats
     try {
-      freed += await removeEntry(path.join(definition.path, entry.name), allowedRoots)
+      stat = await fs.lstat(source)
     } catch {
       continue
     }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Target is no longer a safe folder')
+
+    if (definition.kind === 'folder') {
+      const removed = await removeEntry(source, allowedRoots, olderThan)
+      result.freed += removed.freed
+      result.skipped += removed.skipped
+      continue
+    }
+
+    let entries: import('node:fs').Dirent[] = []
+    try {
+      entries = await fs.readdir(source, { withFileTypes: true })
+    } catch {
+      result.skipped += 1
+      continue
+    }
+    for (const entry of entries) {
+      if (definition.directFilePattern && !entry.isFile()) continue
+      if (definition.directFilePattern && !definition.directFilePattern.test(entry.name)) continue
+      try {
+        const removed = await removeEntry(path.join(source, entry.name), allowedRoots, olderThan)
+        result.freed += removed.freed
+        result.skipped += removed.skipped
+      } catch {
+        result.skipped += 1
+      }
+    }
   }
-  return freed
+  return result
 }
 
 export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
   if (request.confirmation !== 'CLEAN') throw new Error('Cleanup confirmation is invalid')
   if (!request.targetIds.length) throw new Error('No cleanup targets were selected')
 
+  const requestedIds = [...new Set(request.targetIds)]
+  const handlerIds = requestedIds.filter(
+    (id) => approvedTargets.get(id)?.definition.cleanAction === 'disk-cleanup-handler',
+  )
   const items: CleanResultItem[] = []
-  for (const id of [...new Set(request.targetIds)]) {
+
+  for (const id of requestedIds) {
+    if (handlerIds.includes(id)) continue
     const approved = approvedTargets.get(id)
     if (!approved) {
-      items.push({ id, freedBytes: 0, success: false, error: 'Target requires a new scan' })
+      items.push({ id, freedBytes: 0, skippedFiles: 0, success: false, error: 'Target requires a new scan' })
       continue
     }
     try {
-      const freedBytes = await cleanTarget(approved)
-      items.push({ id, freedBytes, success: true })
+      const removed = await cleanTarget(approved)
+      items.push({ id, freedBytes: removed.freed, skippedFiles: removed.skipped, success: true })
       approvedTargets.delete(id)
     } catch (error) {
       items.push({
         id,
         freedBytes: 0,
+        skippedFiles: 0,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown cleanup error',
       })
+    }
+  }
+
+  // All selected Disk Cleanup handlers run in a single supported cleanmgr pass.
+  if (handlerIds.length) {
+    const handlerKeys = handlerIds
+      .map((id) => approvedTargets.get(id)?.definition.handlerKey)
+      .filter((key): key is string => Boolean(key))
+    try {
+      const freed = await freedSpaceOf(() => runDiskCleanupHandlers(handlerKeys))
+      handlerIds.forEach((id, index) => {
+        items.push({ id, freedBytes: index === 0 ? freed : 0, skippedFiles: 0, success: true })
+        approvedTargets.delete(id)
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown cleanup error'
+      for (const id of handlerIds) {
+        items.push({ id, freedBytes: 0, skippedFiles: 0, success: false, error: message })
+      }
     }
   }
 
