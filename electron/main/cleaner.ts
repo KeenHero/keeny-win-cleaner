@@ -11,6 +11,8 @@ import type {
   ScanTarget,
 } from '../../src/types'
 import { createContentAnalyzer, type ContentAnalyzer } from './classifier'
+import { getTargetHistory, recordCleanup, recordObservations } from './history'
+import { getRunningProcesses, matchBlockingApps, type ProcessRecord } from './locks'
 import { getInstalledAppTokens, getRunningProcessTokens, isProbablyInstalled } from './registry'
 import {
   buildBrowserTargets,
@@ -55,6 +57,7 @@ interface RemovalResult {
 interface ApprovedTarget {
   definition: TargetDefinition
   allowedRoots: string[]
+  measuredSize: number
 }
 
 const execFileAsync = promisify(execFile)
@@ -414,25 +417,39 @@ export async function scanSystem(
 ): Promise<ScanSummary> {
   approvedTargets.clear()
   const definitions = await collectDefinitions(options)
+  const processes = getRunningProcesses()
 
   const targets: ScanTarget[] = []
   for (let index = 0; index < definitions.length; index += 1) {
     const definition = definitions[index]
     const target = await toScanTarget(definition)
-    targets.push(target)
     if (target.status === 'ready') {
+      const blockingApps = matchBlockingApps(
+        processes,
+        targetSources(definition),
+        definition.ownerProcesses,
+      )
+      if (blockingApps.length) target.blockingApps = blockingApps
+      target.history = getTargetHistory(target.id, target.size)
+
       const allowedRoots = allowedRootsFor(definition)
-      if (allowedRoots.length) approvedTargets.set(target.id, { definition, allowedRoots })
+      if (allowedRoots.length) {
+        approvedTargets.set(target.id, { definition, allowedRoots, measuredSize: target.size })
+      }
     }
+    targets.push(target)
     onProgress?.(Math.round(((index + 1) / Math.max(1, definitions.length)) * 100))
   }
 
   const visibleTargets = targets
     .filter((target) => target.status !== 'missing')
     .sort((left, right) => right.size - left.size)
+  recordObservations(visibleTargets.map((target) => ({ targetId: target.id, size: target.size })))
+
   const warnings: string[] = []
   if (options.includeOrphans) warnings.push('orphan-detection-is-heuristic')
   if (visibleTargets.some((target) => target.sizeUnknown)) warnings.push('size-unknown-for-windows-handlers')
+  if (visibleTargets.some((target) => target.blockingApps?.length)) warnings.push('applications-are-running')
 
   return {
     targets: visibleTargets,
@@ -619,6 +636,8 @@ export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
     (id) => approvedTargets.get(id)?.definition.cleanAction === 'disk-cleanup-handler',
   )
   const items: CleanResultItem[] = []
+  const cleaned: Array<{ targetId: string; sizeBefore: number; freedBytes: number }> = []
+  const blocked: Array<{ item: CleanResultItem; definition: TargetDefinition }> = []
 
   for (const id of requestedIds) {
     if (handlerIds.includes(id)) continue
@@ -629,7 +648,10 @@ export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
     }
     try {
       const removed = await cleanTarget(approved)
-      items.push({ id, freedBytes: removed.freed, skippedFiles: removed.skipped, success: true })
+      const item: CleanResultItem = { id, freedBytes: removed.freed, skippedFiles: removed.skipped, success: true }
+      items.push(item)
+      cleaned.push({ targetId: id, sizeBefore: approved.measuredSize, freedBytes: removed.freed })
+      if (removed.skipped > 0) blocked.push({ item, definition: approved.definition })
       approvedTargets.delete(id)
     } catch (error) {
       items.push({
@@ -642,6 +664,24 @@ export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
     }
   }
 
+  // Applications are looked up once, and only when something was actually skipped.
+  if (blocked.length) {
+    let processes: ProcessRecord[] = []
+    try {
+      processes = getRunningProcesses()
+    } catch {
+      processes = []
+    }
+    for (const entry of blocked) {
+      const apps = matchBlockingApps(
+        processes,
+        targetSources(entry.definition),
+        entry.definition.ownerProcesses,
+      )
+      if (apps.length) entry.item.blockedBy = apps
+    }
+  }
+
   // All selected Disk Cleanup handlers run in a single supported cleanmgr pass.
   if (handlerIds.length) {
     const handlerKeys = handlerIds
@@ -650,7 +690,10 @@ export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
     try {
       const freed = await freedSpaceOf(() => runDiskCleanupHandlers(handlerKeys))
       handlerIds.forEach((id, index) => {
-        items.push({ id, freedBytes: index === 0 ? freed : 0, skippedFiles: 0, success: true })
+        const freedBytes = index === 0 ? freed : 0
+        items.push({ id, freedBytes, skippedFiles: 0, success: true })
+        const approved = approvedTargets.get(id)
+        if (approved) cleaned.push({ targetId: id, sizeBefore: approved.measuredSize, freedBytes })
         approvedTargets.delete(id)
       })
     } catch (error) {
@@ -660,6 +703,8 @@ export async function cleanSystem(request: CleanRequest): Promise<CleanResult> {
       }
     }
   }
+
+  recordCleanup(cleaned)
 
   return {
     items,

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('cleaner', {
   getAppInfo: () => ipcRenderer.invoke('app:info'),
   scan: (options: ScanOptions) => ipcRenderer.invoke('cleaner:scan', options),
   clean: (request: CleanRequest) => ipcRenderer.invoke('cleaner:clean', request),
+  closeApps: (processIds: number[]) => ipcRenderer.invoke('cleaner:close-apps', processIds),
   openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path),
   openStorageSettings: () => ipcRenderer.invoke('shell:storage-settings'),
   onScanProgress: (listener: (progress: number) => void) => {

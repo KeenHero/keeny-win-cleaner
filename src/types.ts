@@ -31,6 +31,23 @@ export interface TargetClassification {
   }>
 }
 
+export interface BlockingApp {
+  name: string
+  executablePath?: string
+  processIds: number[]
+}
+
+export interface TargetHistory {
+  lastCleanedAt: string
+  daysSinceCleanup: number
+  sizeBefore: number
+  freedBytes: number
+  refillShare: number
+  refillsQuickly: boolean
+  refillPerDay?: number
+  cleanupCount: number
+}
+
 export interface ScanTarget {
   id: string
   nameKey: string
@@ -50,6 +67,8 @@ export interface ScanTarget {
   modifiedAt?: string
   reason?: string
   classification?: TargetClassification
+  blockingApps?: BlockingApp[]
+  history?: TargetHistory
   status: 'ready' | 'missing' | 'denied' | 'protected' | 'error'
 }
 
@@ -81,8 +100,14 @@ export interface CleanResultItem {
   id: string
   freedBytes: number
   skippedFiles: number
+  blockedBy?: BlockingApp[]
   success: boolean
   error?: string
+}
+
+export interface CloseAppsResult {
+  closed: string[]
+  stillRunning: string[]
 }
 
 export interface CleanResult {
@@ -102,6 +127,7 @@ export interface CleanerApi {
   getAppInfo: () => Promise<AppInfo>
   scan: (options: ScanOptions) => Promise<ScanSummary>
   clean: (request: CleanRequest) => Promise<CleanResult>
+  closeApps: (processIds: number[]) => Promise<CloseAppsResult>
   openPath: (path: string) => Promise<string>
   openStorageSettings: () => Promise<void>
   onScanProgress: (listener: (progress: number) => void) => () => void

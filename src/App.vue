@@ -2,7 +2,17 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useTheme } from 'vuetify'
 import { useI18n } from './i18n'
-import type { AppInfo, RiskLevel, ScanOptions, ScanSummary, ScanTarget, TargetCategory } from './types'
+import type {
+  AppInfo,
+  BlockingApp,
+  CleanResult,
+  RiskLevel,
+  ScanOptions,
+  ScanSummary,
+  ScanTarget,
+  TargetCategory,
+  TargetHistory,
+} from './types'
 
 const { language, t } = useI18n()
 const vuetifyTheme = useTheme()
@@ -21,6 +31,16 @@ const confirmDialog = ref(false)
 const confirmation = ref('')
 const snackbar = ref(false)
 const snackbarText = ref('')
+const reportDialog = ref(false)
+const cleanResult = ref<CleanResult | null>(null)
+const closingApp = ref('')
+
+interface CleanedTargetInfo {
+  name: string
+  history?: TargetHistory
+}
+
+const cleanedTargets = ref(new Map<string, CleanedTargetInfo>())
 const options = ref<ScanOptions>({
   includeSafe: true,
   includeApps: true,
@@ -189,21 +209,16 @@ async function scan(): Promise<void> {
 async function clean(): Promise<void> {
   if (confirmation.value !== 'CLEAN') return
   isCleaning.value = true
+  const targetIds = [...selectedIds.value]
+  cleanedTargets.value = new Map(
+    selectedTargets.value.map((target) => [target.id, { name: targetName(target), history: target.history }]),
+  )
   try {
-    const result = await window.cleaner.clean({
-      targetIds: [...selectedIds.value],
-      confirmation: confirmation.value,
-    })
-    const failed = result.items.filter((item) => !item.success).length
-    const skipped = result.items.reduce((sum, item) => sum + item.skippedFiles, 0)
-    snackbarText.value = [
-      t('clean.success', { size: formatBytes(result.totalFreed) }),
-      failed ? t('clean.partial') : '',
-      skipped ? t('clean.skipped', { count: skipped }) : '',
-    ].filter(Boolean).join(' ')
-    snackbar.value = true
+    const result = await window.cleaner.clean({ targetIds, confirmation: confirmation.value })
+    cleanResult.value = result
     confirmDialog.value = false
     confirmation.value = ''
+    reportDialog.value = true
     await scan()
   } catch (error) {
     snackbarText.value = error instanceof Error ? error.message : String(error)
@@ -211,6 +226,59 @@ async function clean(): Promise<void> {
   } finally {
     isCleaning.value = false
   }
+}
+
+const reportItems = computed(() => {
+  return (cleanResult.value?.items ?? []).map((item) => ({
+    ...item,
+    name: cleanedTargets.value.get(item.id)?.name ?? item.id,
+    history: cleanedTargets.value.get(item.id)?.history,
+  }))
+})
+
+const blockedItems = computed(() => reportItems.value.filter((item) => item.blockedBy?.length))
+
+async function closeApp(app: BlockingApp): Promise<void> {
+  closingApp.value = app.name
+  try {
+    const result = await window.cleaner.closeApps(app.processIds)
+    snackbarText.value = result.stillRunning.length
+      ? t('report.closeFailed', { name: app.name })
+      : t('report.closed', { name: app.name })
+  } catch (error) {
+    snackbarText.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    closingApp.value = ''
+    snackbar.value = true
+  }
+}
+
+// The blocked targets are reselected, the typed confirmation stays required.
+function retryBlocked(): void {
+  const ids = new Set(blockedItems.value.map((item) => item.id))
+  selectedIds.value = new Set(
+    (scanResult.value?.targets ?? []).filter((target) => ids.has(target.id) && isSelectable(target))
+      .map((target) => target.id),
+  )
+  reportDialog.value = false
+  if (selectedIds.value.size) confirmDialog.value = true
+}
+
+function historyLine(history: TargetHistory | undefined): string {
+  if (!history) return ''
+  const days = Math.round(history.daysSinceCleanup)
+  const share = Math.round(history.refillShare * 100)
+  if (history.daysSinceCleanup < 1) return t('history.cleanedToday', { share })
+  return history.refillsQuickly
+    ? t('history.refillsQuickly', { days, share })
+    : t('history.lastCleaned', { days, share })
+}
+
+function blockingAppsLine(target: ScanTarget): string {
+  const apps = target.blockingApps ?? []
+  if (!apps.length) return ''
+  const names = apps.map((app) => app.name).join(', ')
+  return apps.length === 1 ? t('results.appRunning', { apps: names }) : t('results.appsRunning', { apps: names })
 }
 
 function riskIcon(risk: RiskLevel): string {
@@ -516,6 +584,10 @@ onBeforeUnmount(() => stopProgressListener?.())
             <v-icon icon="mdi-help-circle-outline" />
             <span>{{ t('results.unknownSize') }}</span>
           </div>
+          <div v-if="scanResult.warnings.includes('applications-are-running')" class="heuristic-note">
+            <v-icon icon="mdi-application-cog-outline" />
+            <span>{{ t('results.applicationsRunning') }}</span>
+          </div>
 
           <div class="filter-row">
             <button
@@ -597,6 +669,14 @@ onBeforeUnmount(() => stopProgressListener?.())
                   <v-icon icon="mdi-clock-outline" size="14" />
                   {{ ageHint(target) }}
                 </p>
+                <p v-if="target.blockingApps?.length" class="target-blocked">
+                  <v-icon icon="mdi-application-cog-outline" size="14" />
+                  {{ blockingAppsLine(target) }}
+                </p>
+                <p v-if="target.history" class="target-history" :class="{ warning: target.history.refillsQuickly }">
+                  <v-icon :icon="target.history.refillsQuickly ? 'mdi-refresh-alert' : 'mdi-history'" size="14" />
+                  {{ historyLine(target.history) }}
+                </p>
                 <div v-if="target.classification" class="classification-block">
                   <div class="classification-chips">
                     <span class="classification-chip">
@@ -667,6 +747,68 @@ onBeforeUnmount(() => stopProgressListener?.())
           <v-btn color="primary" :disabled="confirmation !== 'CLEAN'" :loading="isCleaning" @click="clean">
             {{ t('clean.confirm') }}
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="reportDialog" width="720" scrollable>
+      <v-card class="confirm-card report-card">
+        <div class="confirm-icon"><v-icon icon="mdi-clipboard-check-outline" size="34" /></div>
+        <v-card-title>{{ t('report.title') }}</v-card-title>
+        <v-card-subtitle>{{ t('report.subtitle') }}</v-card-subtitle>
+        <v-card-text>
+          <div class="report-total">
+            <span>{{ t('report.freed') }}</span>
+            <strong>{{ formatBytes(cleanResult?.totalFreed ?? 0) }}</strong>
+          </div>
+
+          <div class="report-list">
+            <article v-for="item in reportItems" :key="item.id" class="report-row">
+              <div class="report-row-head">
+                <v-icon
+                  :icon="item.success ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'"
+                  :class="item.success ? 'positive' : 'negative'"
+                  size="16"
+                />
+                <strong>{{ item.name }}</strong>
+                <span>{{ formatBytes(item.freedBytes) }}</span>
+              </div>
+              <p v-if="item.error" class="report-error">{{ item.error }}</p>
+              <p v-if="item.skippedFiles" class="report-skipped">
+                {{ t('report.skipped', { count: item.skippedFiles }) }}
+              </p>
+              <div v-if="item.blockedBy?.length" class="report-blocked">
+                <span class="report-blocked-label">{{ t('report.blockedBy') }}</span>
+                <div v-for="app in item.blockedBy" :key="app.name" class="report-app">
+                  <v-icon icon="mdi-application-outline" size="14" />
+                  <span>{{ app.name }}</span>
+                  <small>{{ app.processIds.length }}</small>
+                  <v-btn
+                    size="x-small"
+                    variant="tonal"
+                    :loading="closingApp === app.name"
+                    @click="closeApp(app)"
+                  >
+                    {{ t('report.close') }}
+                  </v-btn>
+                </div>
+              </div>
+              <p v-if="item.history && item.history.refillsQuickly" class="report-refill">
+                {{ t('report.refillHint', {
+                  days: Math.round(item.history.daysSinceCleanup),
+                  share: Math.round(item.history.refillShare * 100),
+                }) }}
+              </p>
+            </article>
+          </div>
+
+          <p v-if="!blockedItems.length" class="report-hint">{{ t('report.nothingSkipped') }}</p>
+          <p v-else class="report-hint">{{ t('report.closeHint') }}</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn v-if="blockedItems.length" variant="text" @click="retryBlocked">{{ t('report.retry') }}</v-btn>
+          <v-btn color="primary" @click="reportDialog = false">{{ t('report.done') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import type { CleanRequest, ScanOptions } from '../../src/types'
 import { cleanSystem, scanSystem } from './cleaner'
+import { configureHistoryStore } from './history'
+import { closeApps } from './locks'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -46,6 +48,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  configureHistoryStore(app.getPath('userData'))
+
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(),
     platform: process.platform,
@@ -57,6 +61,7 @@ app.whenReady().then(() => {
     return scanSystem(options, (progress) => event.sender.send('cleaner:scan-progress', progress))
   })
   ipcMain.handle('cleaner:clean', (_event, request: CleanRequest) => cleanSystem(request))
+  ipcMain.handle('cleaner:close-apps', (_event, processIds: number[]) => closeApps(processIds))
   ipcMain.handle('shell:open-path', (_event, candidate: string) => shell.openPath(candidate))
   ipcMain.handle('shell:storage-settings', () => shell.openExternal('ms-settings:storagesense'))
 

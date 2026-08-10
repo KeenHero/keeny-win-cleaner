@@ -18,6 +18,8 @@ The main principle is simple: the application never deletes anything without per
 - [Cleanup targets](#cleanup-targets)
 - [Minimum file age](#minimum-file-age)
 - [Windows Disk Cleanup handlers](#windows-disk-cleanup-handlers)
+- [Blocking applications](#blocking-applications)
+- [Cleanup history and refill rate](#cleanup-history-and-refill-rate)
 - [AppData leftover detection](#appdata-leftover-detection)
 - [Content classification](#content-classification)
 - [Windows Update and previous Windows versions](#windows-update-and-previous-windows-versions)
@@ -46,6 +48,8 @@ The main principle is simple: the application never deletes anything without per
 - Measures the Recycle Bin of every drive and empties it through the Windows function
 - Offers selected Windows Disk Cleanup handlers through the supported sagerun interface
 - Keeps files below a configured minimum age untouched
+- Names the running application behind every skipped file and can ask it to close
+- Records every cleanup locally and reports how fast an area fills up again
 - Detects possible AppData leftovers in Local, Roaming, and LocalLow
 - Compares candidates against several current Windows installation sources
 - Locally identifies developer tools, games, and applications
@@ -191,6 +195,35 @@ A cleanup run resets `StateFlags0099` to `0` for every handler on the system, se
 
 `DownloadsFolder`, `Recycle Bin`, `Previous Installations`, and `Delivery Optimization Files` are deliberately excluded from this list. Windows reports no size for handlers in advance. Where a measurable folder is known, its size is shown as an estimate, otherwise the interface states that the size is unknown.
 
+## Blocking applications
+
+Open programs lock individual files, which is the most common reason for an incomplete cleanup. Instead of only counting skipped files, KeenyWinCleaner names the application behind them.
+
+A running application is associated with an area in two ways:
+
+1. Known targets declare their owner process. A Chrome profile cache belongs to `chrome.exe`, the Discord cache to `Discord.exe`, the Steam shader cache to `steam.exe`.
+2. For all other paths, the name of a running executable is matched against the path itself. Generic parts such as `AppData`, `Local`, `Cache`, or `Temp` are ignored, so unrelated processes are not reported.
+
+This is an association, not proof that a specific file handle is held. The interface therefore states that the application is running and uses the area, never that it holds a particular lock.
+
+Running applications are shown twice: as a hint on the result row before a cleanup, and in the cleanup report next to the files that were skipped. Each entry offers a close button that sends a regular close request through `taskkill` without the force flag. An application can ask back, save open work, or refuse to quit, and the report says whether it actually closed. After closing, the blocked areas can be reselected in one click, and the typed confirmation is still required.
+
+## Cleanup history and refill rate
+
+Every cleanup is recorded in `cleanup-history.json` inside the application data directory. A record holds the target identifier, the time, the size before the cleanup, and the freed bytes. Each later scan adds an observation with the current size and the days since the cleanup.
+
+From this the application derives:
+
+- how long ago an area was cleaned
+- how much of the previous size is back
+- a median refill rate per day across the observations of the current cycle
+
+An area that is back to at least half its previous size within seven days is marked as refilling quickly. The result row says so directly, and the cleanup report repeats it for the areas just cleaned.
+
+The point is honesty about what a cleanup is worth. A shader cache or a package manager cache that returns within days is not a permanent gain, and the application says so instead of advertising the same gigabytes again on the next run.
+
+Only the last five cleanups and twelve observations per target are kept, entries older than 180 days are dropped, and a failed write never blocks a cleanup.
+
 ## AppData leftover detection
 
 AppData must never be cleared as a whole. Applications store profiles, settings, databases, sessions, game saves, local documents, and authentication data there.
@@ -330,6 +363,9 @@ The interface is designed for fast review and clear control.
 - Minimum age hint on every target that keeps recent files
 - Explicit warning line on targets that remove rollback options, crash analysis, or deleted files
 - Clear label when Windows reports no size in advance
+- Hint on every target whose application is currently running
+- History line stating how long ago an area was cleaned and how much of it is back
+- Cleanup report with freed space per area, skipped files, the applications behind them, and a close button
 - Configurable minimum age for AppData candidates
 - Progress indicator during scans
 - Filters for All, the three risk levels, and every category with results, each with a count
@@ -358,7 +394,14 @@ KeenyWinCleaner operates locally.
 - No downloaded cleanup scripts
 - No file content analysis
 
-PowerShell runs locally without loading a profile and is used for three fixed commands only: `Get-AppxPackage` for installed Store packages, `Get-CimInstance Win32_Process` for running processes, and `Clear-RecycleBin` for emptying the Recycle Bin. Windows system tools such as `reg.exe`, `cleanmgr.exe`, and `dism.exe` are started as local processes with fixed argument lists. No command line is built from file contents or from data received over a network.
+PowerShell runs locally without loading a profile and is used for three fixed commands only: `Get-AppxPackage` for installed Store packages, `Get-CimInstance Win32_Process` for running processes, and `Clear-RecycleBin` for emptying the Recycle Bin. Windows system tools such as `reg.exe`, `cleanmgr.exe`, `dism.exe`, `tasklist.exe`, and `taskkill.exe` are started as local processes with fixed argument lists. No command line is built from file contents or from data received over a network.
+
+The application writes exactly two things outside the cleanup itself:
+
+- `cleanup-history.json` in the application data directory. It holds target identifiers, timestamps, sizes, and freed bytes. For AppData leftovers the identifier contains the folder name in encoded form. The file never leaves the device, and deleting it only resets the refill statistics.
+- The `StateFlags0099` registry values of the Windows Disk Cleanup handlers, and only during a cleanup run that includes such a handler.
+
+Closing an application happens only when the button in the cleanup report is used, applies only to the processes listed there, and never uses the force flag.
 
 The only registry values the application writes are the `StateFlags0099` entries of the Windows Disk Cleanup handlers, and only during a cleanup run that includes such a handler.
 
@@ -420,6 +463,7 @@ The preload bridge exposes only these operations:
 - Start a scan
 - Receive scan progress
 - Clean selected targets
+- Ask listed applications to close
 - Open a result folder
 - Open Windows storage settings
 
@@ -431,7 +475,9 @@ keenandclean/
     main/
       classifier.ts     Local content classification
       cleaner.ts        Scanning, measurement, and cleanup
+      history.ts        Cleanup history and refill rate
       index.ts          Electron window and IPC handlers
+      locks.ts          Running application detection and close requests
       registry.ts       Installed application matching and registry reads
       targets.ts        Cleanup target definitions and detection
     preload/
@@ -506,6 +552,10 @@ The current test suite covers:
 - Unique target identifiers across all definitions
 - Case insensitive deduplication of measured sources
 - Exclusion of personal folders from the Disk Cleanup handler list
+- Owner process matching and grouping of process ids
+- Rejection of generic path segments during application matching
+- Refill share, quick refill flag, and daily refill rate of the history
+- Reading a process id back from tasklist output
 - Steam library detection from `libraryfolders.vdf`
 - Normalization of installed application names
 - Installed application matching
@@ -550,6 +600,9 @@ The NSIS installer allows the user to choose an installation directory and creat
 - Store package information can be incomplete when packages are damaged.
 - Administrator access is required for some system paths and DISM operations.
 - Locked files can be cleaned only after the related application is closed.
+- A reported application is an association through the target path or a declared owner process, not proof that it holds a specific file handle.
+- A close request can be refused by the application, and background helpers of the same product may keep running.
+- Refill statistics need at least one earlier cleanup, and a cleanup performed outside the application is not part of the record.
 - Size information is a snapshot. Applications can change files during or after a scan.
 - Autoclean and DISM can report a different amount of freed space than the initial estimate.
 - Windows reports no size for Disk Cleanup handlers before a run.
@@ -595,7 +648,19 @@ No. KeenyWinCleaner uses only the supported DISM analysis and `StartComponentCle
 
 ### Are locked files deleted forcibly?
 
-No. Inaccessible or currently used files are skipped. The result message reports how many files were skipped.
+No. Inaccessible or currently used files are skipped. The cleanup report shows how many files were skipped per area and which application is behind them.
+
+### Does the close button kill my applications?
+
+No. It sends a regular close request without the force flag. The application can ask back, save open work, or refuse to quit, and the report says whether it actually closed. Nothing happens without a click on that button.
+
+### Why does the application say a cache refills quickly?
+
+Because it compares the current size against the size before the last cleanup. Shader caches and package manager caches often return within days. That gain is not permanent, and saying so is more useful than counting the same gigabytes again on every run.
+
+### Can I delete the history?
+
+Yes. Removing `cleanup-history.json` from the application data directory only resets the refill statistics. Nothing else depends on it.
 
 ### Are browser passwords or bookmarks removed?
 

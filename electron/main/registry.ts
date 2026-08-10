@@ -74,7 +74,7 @@ export function parseLibraryFolders(content: string): string[] {
     .filter((value, index, all) => all.indexOf(value) === index)
 }
 
-function queryPowerShell<T>(script: string): T[] {
+export function queryPowerShell<T>(script: string): T[] {
   try {
     const output = execFileSync(
       'powershell.exe',

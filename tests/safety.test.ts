@@ -12,6 +12,8 @@ import {
   targetSources,
   type TargetDefinition,
 } from '../electron/main/targets'
+import { computeHistory, daysBetween, type TargetRecord } from '../electron/main/history'
+import { matchBlockingApps, parseTasklistPid, type ProcessRecord } from '../electron/main/locks'
 import type { ScanOptions } from '../src/types'
 
 describe('path boundary checks', () => {
@@ -128,6 +130,88 @@ describe('target definitions', () => {
     expect(handlers).not.toContain('DownloadsFolder')
     expect(handlers).not.toContain('Recycle Bin')
     expect(handlers).not.toContain('Previous Installations')
+  })
+})
+
+describe('blocking application detection', () => {
+  const processes: ProcessRecord[] = [
+    { Name: 'chrome.exe', ExecutablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', ProcessId: 1200 },
+    { Name: 'chrome.exe', ExecutablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', ProcessId: 1201 },
+    { Name: 'Discord.exe', ExecutablePath: 'C:\\Users\\Example\\AppData\\Local\\Discord\\app-1.0\\Discord.exe', ProcessId: 2300 },
+    { Name: 'explorer.exe', ExecutablePath: 'C:\\Windows\\explorer.exe', ProcessId: 900 },
+    { Name: 'svchost.exe', ProcessId: 4 },
+  ]
+
+  it('reports a declared owner process and groups its process ids', () => {
+    const apps = matchBlockingApps(
+      processes,
+      ['C:\\Users\\Example\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cache'],
+      ['chrome.exe'],
+    )
+    expect(apps).toHaveLength(1)
+    expect(apps[0].name).toBe('chrome.exe')
+    expect(apps[0].processIds).toEqual([1200, 1201])
+  })
+
+  it('recognizes an application from the target path without a declared owner', () => {
+    const apps = matchBlockingApps(processes, ['C:\\Users\\Example\\AppData\\Roaming\\discord\\Cache'])
+    expect(apps.map((app) => app.name)).toEqual(['Discord.exe'])
+  })
+
+  it('ignores generic path segments so unrelated processes stay out', () => {
+    const apps = matchBlockingApps(processes, ['C:\\Windows\\Temp'])
+    expect(apps).toEqual([])
+  })
+
+  it('reads a process id back from tasklist output', () => {
+    const output = '"chrome.exe","1200","Console","1","350.000 K"'
+    expect(parseTasklistPid(output, 1200)).toBe(true)
+    expect(parseTasklistPid(output, 12)).toBe(false)
+    expect(parseTasklistPid('INFO: No tasks are running.', 1200)).toBe(false)
+  })
+})
+
+describe('cleanup history', () => {
+  const now = Date.UTC(2026, 7, 10)
+  const threeDaysAgo = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString()
+
+  function record(overrides: Partial<TargetRecord> = {}): TargetRecord {
+    return {
+      records: [{ cleanedAt: threeDaysAgo, sizeBefore: 4_000_000_000, freedBytes: 4_000_000_000 }],
+      observations: [],
+      ...overrides,
+    }
+  }
+
+  it('returns nothing without a previous cleanup', () => {
+    expect(computeHistory({ records: [], observations: [] }, 100, now)).toBeUndefined()
+  })
+
+  it('measures how much of a target came back', () => {
+    const history = computeHistory(record(), 3_600_000_000, now)
+    expect(history?.daysSinceCleanup).toBeCloseTo(3, 5)
+    expect(history?.refillShare).toBeCloseTo(0.9, 5)
+    expect(history?.refillsQuickly).toBe(true)
+  })
+
+  it('does not flag a target that stays empty', () => {
+    const history = computeHistory(record(), 12_000_000, now)
+    expect(history?.refillsQuickly).toBe(false)
+  })
+
+  it('derives a daily refill rate from the observations', () => {
+    const history = computeHistory(record({
+      observations: [
+        { at: threeDaysAgo, size: 1_000_000_000, daysSinceCleanup: 1 },
+        { at: threeDaysAgo, size: 2_000_000_000, daysSinceCleanup: 2 },
+        { at: threeDaysAgo, size: 3_000_000_000, daysSinceCleanup: 3 },
+      ],
+    }), 3_000_000_000, now)
+    expect(history?.refillPerDay).toBe(1_000_000_000)
+  })
+
+  it('ignores an unreadable timestamp', () => {
+    expect(daysBetween('not a date', now)).toBe(0)
   })
 })
 

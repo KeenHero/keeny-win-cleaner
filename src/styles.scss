@@ -899,6 +899,137 @@ a {
   color: #7e948b;
 }
 
+.app-shell .target-main p.target-blocked,
+.app-shell .target-main p.target-history {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  font-size: 8.5px;
+}
+
+.app-shell .target-main p.target-blocked {
+  color: #a8b4ff;
+}
+
+.app-shell .target-main p.target-history {
+  color: #7e948b;
+}
+
+.app-shell .target-main p.target-history.warning {
+  color: #ffc76b;
+}
+
+.report-card .report-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+
+.report-card .report-total span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.report-card .report-total strong {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.report-list {
+  display: grid;
+  gap: 8px;
+}
+
+.report-row {
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.report-row-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-row-head strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-row-head span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.report-row-head .positive { color: #63e6a7; }
+.report-row-head .negative { color: #ff949b; }
+
+.report-row p {
+  margin: 6px 0 0 24px;
+  font-size: 9px;
+}
+
+.report-error { color: #ff949b; }
+.report-skipped { color: var(--muted); }
+.report-refill { color: #ffc76b; }
+
+.report-blocked {
+  margin: 8px 0 0 24px;
+}
+
+.report-blocked-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.report-app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.report-app small {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 8px;
+}
+
+.report-hint {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .target-meta strong.size-unknown {
   color: #8fa79d;
   font-size: 10px;

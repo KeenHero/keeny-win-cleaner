@@ -194,6 +194,33 @@ Microsoft unterscheidet ausdrücklich zwischen temporären Daten, persistentem l
 
 Quelle: [Microsoft Learn: ApplicationData](https://learn.microsoft.com/en-us/uwp/api/windows.storage.applicationdata)
 
+## Laufende Anwendungen
+
+Geöffnete Programme sperren einzelne Dateien. Zu jedem Bereich wird deshalb geprüft, ob die zugehörige Anwendung gerade läuft.
+
+Die Zuordnung erfolgt auf zwei Wegen:
+
+1. Bekannte Ziele nennen ihren Besitzerprozess, etwa `chrome.exe` für ein Chrome Profil, `Discord.exe` für den Discord Cache, `steam.exe` für den Steam Shadercache.
+2. Für alle übrigen Pfade wird der Name eines laufenden Programms mit dem Zielpfad verglichen. Allgemeine Bestandteile wie `AppData`, `Local`, `Cache` oder `Temp` bleiben dabei außen vor.
+
+Das ist eine Zuordnung, kein Nachweis über ein konkretes Dateihandle. Die Oberfläche sagt deshalb, dass die Anwendung läuft und diesen Bereich verwendet, nicht dass sie eine bestimmte Datei sperrt.
+
+Der Bereinigungsbericht zeigt die zugeordnete Anwendung neben der Zahl der übersprungenen Dateien und bietet einen Knopf zum Beenden. Gesendet wird eine normale Schließen-Anfrage über `taskkill` ohne Erzwingen. Die Anwendung darf nachfragen, ungespeicherte Daten sichern oder das Beenden ablehnen. Anschließend meldet der Bericht, ob sie tatsächlich beendet wurde.
+
+## Bereinigungsverlauf
+
+Jede Bereinigung wird lokal in `cleanup-history.json` im Anwendungsdatenordner festgehalten, mit Zielkennung, Zeitpunkt, Größe vor der Bereinigung und freigegebenen Bytes. Jeder spätere Scan ergänzt eine Beobachtung mit der aktuellen Größe und dem Abstand in Tagen.
+
+Daraus entstehen drei Angaben:
+
+1. Wie lange die letzte Bereinigung her ist.
+2. Welcher Anteil der damaligen Größe wieder da ist.
+3. Eine mittlere Rückkehr pro Tag über die Beobachtungen des laufenden Zyklus.
+
+Ein Bereich, der innerhalb von sieben Tagen wieder mindestens die Hälfte seiner damaligen Größe erreicht, wird als schnell wiederkehrend markiert.
+
+Gespeichert werden höchstens fünf Bereinigungen und zwölf Beobachtungen je Ziel. Einträge älter als 180 Tage entfallen. Ein fehlgeschlagener Schreibvorgang blockiert niemals eine Bereinigung.
+
 ## Bewusst nicht direkt gelöscht
 
 - Downloads

@@ -20,6 +20,7 @@ export interface TargetDefinition {
   selectedByDefault?: boolean
   directFilePattern?: RegExp
   minFileAgeDays?: number
+  ownerProcesses?: string[]
   tolerateDenied?: boolean
   cleanAction?: CleanAction
   handlerKey?: string
@@ -153,6 +154,7 @@ export const standardTargets: TargetDefinition[] = [
     category: 'apps',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['discord.exe'],
   },
   {
     id: 'teams-cache',
@@ -167,6 +169,7 @@ export const standardTargets: TargetDefinition[] = [
     category: 'apps',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['ms-teams.exe', 'teams.exe'],
   },
   {
     id: 'spotify-cache',
@@ -180,6 +183,7 @@ export const standardTargets: TargetDefinition[] = [
     category: 'apps',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['spotify.exe'],
   },
   {
     id: 'windows-temp',
@@ -348,6 +352,7 @@ export const developerTargets: TargetDefinition[] = [
     category: 'development',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['Code.exe'],
   },
   {
     id: 'dev-unity',
@@ -357,6 +362,7 @@ export const developerTargets: TargetDefinition[] = [
     category: 'development',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['Unity.exe', 'UnityHub.exe'],
   },
   {
     id: 'dev-unreal',
@@ -417,6 +423,7 @@ export const gameTargets: TargetDefinition[] = [
     category: 'games',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['Battle.net.exe'],
   },
   {
     id: 'game-ea',
@@ -426,6 +433,7 @@ export const gameTargets: TargetDefinition[] = [
     category: 'games',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['EADesktop.exe'],
   },
   {
     id: 'game-gog',
@@ -435,6 +443,7 @@ export const gameTargets: TargetDefinition[] = [
     category: 'games',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['GalaxyClient.exe'],
   },
 ]
 
@@ -531,16 +540,17 @@ interface ChromiumBrowser {
   id: string
   label: string
   userData: string
+  process: string
   flatProfile?: boolean
 }
 
 const chromiumBrowsers: ChromiumBrowser[] = [
-  { id: 'edge', label: 'Microsoft Edge', userData: path.join(localAppData, 'Microsoft', 'Edge', 'User Data') },
-  { id: 'chrome', label: 'Google Chrome', userData: path.join(localAppData, 'Google', 'Chrome', 'User Data') },
-  { id: 'brave', label: 'Brave', userData: path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'User Data') },
-  { id: 'vivaldi', label: 'Vivaldi', userData: path.join(localAppData, 'Vivaldi', 'User Data') },
-  { id: 'opera', label: 'Opera', userData: path.join(localAppData, 'Opera Software', 'Opera Stable'), flatProfile: true },
-  { id: 'opera-gx', label: 'Opera GX', userData: path.join(localAppData, 'Opera Software', 'Opera GX Stable'), flatProfile: true },
+  { id: 'edge', label: 'Microsoft Edge', process: 'msedge.exe', userData: path.join(localAppData, 'Microsoft', 'Edge', 'User Data') },
+  { id: 'chrome', label: 'Google Chrome', process: 'chrome.exe', userData: path.join(localAppData, 'Google', 'Chrome', 'User Data') },
+  { id: 'brave', label: 'Brave', process: 'brave.exe', userData: path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'User Data') },
+  { id: 'vivaldi', label: 'Vivaldi', process: 'vivaldi.exe', userData: path.join(localAppData, 'Vivaldi', 'User Data') },
+  { id: 'opera', label: 'Opera', process: 'opera.exe', userData: path.join(localAppData, 'Opera Software', 'Opera Stable'), flatProfile: true },
+  { id: 'opera-gx', label: 'Opera GX', process: 'opera.exe', userData: path.join(localAppData, 'Opera Software', 'Opera GX Stable'), flatProfile: true },
 ]
 
 const chromiumProfileCaches = [
@@ -583,6 +593,7 @@ export async function buildBrowserTargets(): Promise<TargetDefinition[]> {
         category: 'browser',
         risk: 'review',
         kind: 'contents',
+        ownerProcesses: [browser.process],
       })
     }
 
@@ -597,6 +608,7 @@ export async function buildBrowserTargets(): Promise<TargetDefinition[]> {
         category: 'browser',
         risk: 'review',
         kind: 'contents',
+        ownerProcesses: [browser.process],
       })
     }
   }
@@ -617,6 +629,7 @@ export async function buildBrowserTargets(): Promise<TargetDefinition[]> {
       category: 'browser',
       risk: 'review',
       kind: 'contents',
+      ownerProcesses: ['firefox.exe'],
     })
   }
 
@@ -637,6 +650,7 @@ export async function buildDeveloperTargets(): Promise<TargetDefinition[]> {
     category: 'development',
     risk: 'review',
     kind: 'contents',
+    ownerProcesses: ['devenv.exe'],
   }]
 }
 
@@ -666,6 +680,7 @@ export async function buildGameTargets(): Promise<TargetDefinition[]> {
       category: 'games',
       risk: 'review',
       kind: 'contents',
+      ownerProcesses: ['steam.exe'],
     })
     definitions.push({
       id: 'game-steam-htmlcache',
@@ -679,6 +694,7 @@ export async function buildGameTargets(): Promise<TargetDefinition[]> {
       category: 'games',
       risk: 'review',
       kind: 'contents',
+      ownerProcesses: ['steam.exe'],
     })
   }
 
@@ -694,6 +710,7 @@ export async function buildGameTargets(): Promise<TargetDefinition[]> {
       category: 'games',
       risk: 'review',
       kind: 'contents',
+      ownerProcesses: ['EpicGamesLauncher.exe'],
     })
   }
 
