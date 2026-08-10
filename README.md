@@ -332,8 +332,9 @@ The interface is designed for fast review and clear control.
 - Clear label when Windows reports no size in advance
 - Configurable minimum age for AppData candidates
 - Progress indicator during scans
-- Filters for All, Safe, Review, and Advanced
-- Group selection by risk level
+- Filters for All, the three risk levels, and every category with results, each with a count
+- Categories cover temporary files, Windows caches, error reports, browsers, applications, development, games, logs, Windows system, Recycle Bin, and AppData leftovers
+- Group selection follows the active filter, so filtering first and selecting afterwards works as one gesture
 - Result rows with path, size, file count, and folder count
 - Direct folder access for manual review
 - Visible classification and confidence information

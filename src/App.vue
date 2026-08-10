@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useTheme } from 'vuetify'
 import { useI18n } from './i18n'
-import type { AppInfo, RiskLevel, ScanOptions, ScanSummary, ScanTarget } from './types'
+import type { AppInfo, RiskLevel, ScanOptions, ScanSummary, ScanTarget, TargetCategory } from './types'
 
 const { language, t } = useI18n()
 const vuetifyTheme = useTheme()
@@ -16,7 +16,7 @@ const isScanning = ref(false)
 const isCleaning = ref(false)
 const scanProgress = ref(0)
 const selectedIds = ref(new Set<string>())
-const riskFilter = ref<'all' | RiskLevel>('all')
+const activeFilter = ref('all')
 const confirmDialog = ref(false)
 const confirmation = ref('')
 const snackbar = ref(false)
@@ -31,11 +31,46 @@ const options = ref<ScanOptions>({
   minOrphanAgeDays: 45,
 })
 
+const riskFilters: RiskLevel[] = ['safe', 'review', 'advanced']
+const categoryOrder: TargetCategory[] = [
+  'temporary',
+  'cache',
+  'reports',
+  'browser',
+  'apps',
+  'development',
+  'games',
+  'logs',
+  'system',
+  'recycle',
+  'leftovers',
+]
+
+function matchesFilter(target: ScanTarget, filter: string): boolean {
+  if (filter === 'all') return true
+  const [kind, value] = filter.split(':')
+  return kind === 'risk' ? target.risk === value : target.category === value
+}
+
 const filteredTargets = computed(() => {
-  const targets = scanResult.value?.targets ?? []
-  if (riskFilter.value === 'all') return targets
-  return targets.filter((target) => target.risk === riskFilter.value)
+  return (scanResult.value?.targets ?? []).filter((target) => matchesFilter(target, activeFilter.value))
 })
+
+// Only categories with results are offered so the filter row stays readable.
+const categoryFilters = computed(() => {
+  const targets = scanResult.value?.targets ?? []
+  return categoryOrder.filter((category) => targets.some((target) => target.category === category))
+})
+
+function filterCount(filter: string): number {
+  return (scanResult.value?.targets ?? []).filter((target) => matchesFilter(target, filter)).length
+}
+
+function filterLabel(filter: string): string {
+  if (filter === 'all') return t('results.all')
+  const [kind, value] = filter.split(':')
+  return kind === 'risk' ? t(`results.${value}`) : t(`category.${value}`)
+}
 
 const selectedTargets = computed(() => {
   return (scanResult.value?.targets ?? []).filter((target) => selectedIds.value.has(target.id))
@@ -97,10 +132,14 @@ function selectSafe(): void {
   )
 }
 
+// Group selection always follows the active filter, so filtering first and
+// selecting afterwards works as one gesture.
 function targetsForGroup(group: SelectionGroup): ScanTarget[] {
-  return (scanResult.value?.targets ?? [])
+  return filteredTargets.value
     .filter((target) => isSelectable(target) && (group === 'all' || target.risk === group))
 }
+
+const availableGroups = computed(() => selectionGroups.filter((group) => targetsForGroup(group).length > 0))
 
 function isGroupSelected(group: SelectionGroup): boolean {
   const targets = targetsForGroup(group)
@@ -119,7 +158,7 @@ function toggleGroup(group: SelectionGroup): void {
 }
 
 function groupLabel(group: SelectionGroup): string {
-  if (group === 'all') return t('results.selectAll')
+  if (group === 'all') return activeFilter.value === 'all' ? t('results.selectAll') : t('results.selectVisible')
   if (group === 'safe') return t('results.selectSafe')
   if (group === 'review') return t('results.selectReview')
   return t('results.selectAdvanced')
@@ -135,6 +174,7 @@ async function scan(): Promise<void> {
   isScanning.value = true
   scanProgress.value = 0
   selectedIds.value = new Set()
+  activeFilter.value = 'all'
   try {
     scanResult.value = await window.cleaner.scan({ ...options.value })
     selectSafe()
@@ -177,6 +217,23 @@ function riskIcon(risk: RiskLevel): string {
   if (risk === 'safe') return 'mdi-shield-check-outline'
   if (risk === 'review') return 'mdi-eye-outline'
   return 'mdi-alert-outline'
+}
+
+function categoryIcon(category: TargetCategory): string {
+  const icons: Record<TargetCategory, string> = {
+    temporary: 'mdi-clock-fast',
+    cache: 'mdi-cached',
+    reports: 'mdi-file-alert-outline',
+    browser: 'mdi-web',
+    apps: 'mdi-application-outline',
+    development: 'mdi-code-tags',
+    games: 'mdi-gamepad-variant-outline',
+    logs: 'mdi-text-box-search-outline',
+    system: 'mdi-microsoft-windows',
+    recycle: 'mdi-delete-outline',
+    leftovers: 'mdi-folder-question-outline',
+  }
+  return icons[category]
 }
 
 function applicationIcon(target: ScanTarget): string {
@@ -460,11 +517,43 @@ onBeforeUnmount(() => stopProgressListener?.())
             <span>{{ t('results.unknownSize') }}</span>
           </div>
 
-          <div class="group-selection">
+          <div class="filter-row">
+            <button
+              :class="{ active: activeFilter === 'all' }"
+              @click="activeFilter = 'all'"
+            >
+              {{ t('results.all') }}
+              <small>{{ filterCount('all') }}</small>
+            </button>
+            <span class="filter-divider" aria-hidden="true" />
+            <button
+              v-for="risk in riskFilters"
+              :key="risk"
+              :class="{ active: activeFilter === `risk:${risk}` }"
+              @click="activeFilter = `risk:${risk}`"
+            >
+              <v-icon :icon="riskIcon(risk)" size="13" />
+              {{ filterLabel(`risk:${risk}`) }}
+              <small>{{ filterCount(`risk:${risk}`) }}</small>
+            </button>
+            <span v-if="categoryFilters.length" class="filter-divider" aria-hidden="true" />
+            <button
+              v-for="category in categoryFilters"
+              :key="category"
+              :class="{ active: activeFilter === `category:${category}` }"
+              @click="activeFilter = `category:${category}`"
+            >
+              <v-icon :icon="categoryIcon(category)" size="13" />
+              {{ filterLabel(`category:${category}`) }}
+              <small>{{ filterCount(`category:${category}`) }}</small>
+            </button>
+          </div>
+
+          <div v-if="availableGroups.length" class="group-selection">
             <span class="group-selection-label">{{ t('results.selectGroups') }}</span>
-            <div class="group-selection-actions">
+            <div class="group-selection-actions" :style="{ gridTemplateColumns: `repeat(${availableGroups.length}, 1fr)` }">
               <button
-                v-for="group in selectionGroups"
+                v-for="group in availableGroups"
                 :key="group"
                 :class="{ active: isGroupSelected(group) }"
                 @click="toggleGroup(group)"
@@ -474,17 +563,6 @@ onBeforeUnmount(() => stopProgressListener?.())
                 <small>{{ targetsForGroup(group).length }}</small>
               </button>
             </div>
-          </div>
-
-          <div class="filter-row">
-            <button
-              v-for="filter in ['all', 'safe', 'review', 'advanced'] as const"
-              :key="filter"
-              :class="{ active: riskFilter === filter }"
-              @click="riskFilter = filter"
-            >
-              {{ t(`results.${filter}`) }}
-            </button>
           </div>
 
           <div v-if="filteredTargets.length" class="target-list">

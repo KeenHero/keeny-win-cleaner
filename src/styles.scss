@@ -675,8 +675,17 @@ a {
 
 .filter-row {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 7px;
   margin: 20px 0 14px;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--border);
 }
 
 .group-selection {
@@ -750,7 +759,10 @@ a {
 }
 
 .filter-row button {
-  padding: 7px 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px 7px 13px;
   border: 1px solid rgba(145, 205, 180, 0.09);
   border-radius: 999px;
   color: #6f877e;
@@ -758,8 +770,23 @@ a {
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
+  transition: 140ms ease;
 }
 
+.filter-row button small {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 8px;
+  opacity: 0.85;
+}
+
+.filter-row button:hover,
 .filter-row button.active {
   border-color: rgba(99, 230, 167, 0.18);
   color: #7ee9b8;
@@ -1209,16 +1236,22 @@ a {
 .app-shell .scan-option:hover,
 .app-shell .target-row:hover,
 .app-shell .target-row.selected,
+.app-shell .filter-row button:hover,
 .app-shell .filter-row button.active {
   border-color: var(--accent-border);
   background: var(--accent-soft);
 }
 
+.app-shell .filter-row button:hover,
 .app-shell .filter-row button.active,
 .app-shell .text-action,
 .app-shell .eyebrow,
 .app-shell .section-number {
   color: var(--accent);
+}
+
+.app-shell .filter-row button small {
+  background: var(--panel);
 }
 
 .app-shell .brand-mark,
