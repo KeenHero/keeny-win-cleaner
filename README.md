@@ -6,7 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-KeenyWinCleaner is a careful and transparent cleanup utility for Windows 10 and Windows 11. It finds temporary files, rebuildable caches, previous Windows installations, superseded update components, and possible leftovers from uninstalled applications.
+KeenyWinCleaner is a careful and transparent cleanup utility for Windows 10 and Windows 11. It finds temporary files, browser caches of every profile, package manager and build caches, game launcher and shader caches, crash dumps and setup logs, previous Windows installations, superseded update components, and possible leftovers from uninstalled applications.
 
 The main principle is simple: the application never deletes anything without permission. Every result includes its path, size, file count, risk level, and additional details. Only explicitly selected and confirmed targets are cleaned.
 
@@ -357,7 +357,9 @@ KeenyWinCleaner operates locally.
 - No downloaded cleanup scripts
 - No file content analysis
 
-PowerShell runs locally without loading a profile and is used only to detect installed Store packages and running processes. Windows system tools are started as local processes with fixed argument lists.
+PowerShell runs locally without loading a profile and is used for three fixed commands only: `Get-AppxPackage` for installed Store packages, `Get-CimInstance Win32_Process` for running processes, and `Clear-RecycleBin` for emptying the Recycle Bin. Windows system tools such as `reg.exe`, `cleanmgr.exe`, and `dism.exe` are started as local processes with fixed argument lists. No command line is built from file contents or from data received over a network.
+
+The only registry values the application writes are the `StateFlags0099` entries of the Windows Disk Cleanup handlers, and only during a cleanup run that includes such a handler.
 
 ## Architecture
 
@@ -387,13 +389,22 @@ Electron preload
     v
 Electron main process
     |
-    + Scanner and path measurement
+    + Target definitions and detection
+    + Scanner and parallel path measurement
     + Installed application matching
     + Content classification
     + Approved targets from the latest scan
     + File system cleanup
-    + cleanmgr and DISM
+    + cleanmgr, DISM, and Clear-RecycleBin
 ```
+
+### Measurement
+
+A target can cover several folders at once. A browser profile, for example, groups nine cache folders into a single result row. Sources are deduplicated case insensitively, so a folder that appears twice under different spellings is measured and removed only once.
+
+Each folder is walked by a pool of twelve workers over a shared queue. Every accumulated value is order independent, so the result does not depend on how the pool schedules work. On a system with large package manager and browser caches this cuts a full scan from roughly three minutes to about one.
+
+Targets with a minimum file age skip newer files during measurement and during cleanup. A folder that still holds skipped files stays in place.
 
 The renderer has no direct Node.js access. The application window uses:
 
@@ -541,6 +552,7 @@ The NSIS installer allows the user to choose an installation directory and creat
 - Size information is a snapshot. Applications can change files during or after a scan.
 - Autoclean and DISM can report a different amount of freed space than the initial estimate.
 - Windows reports no size for Disk Cleanup handlers before a run.
+- All selected Disk Cleanup handlers run in one pass, so the freed space cannot be attributed to a single handler and is reported on the first selected entry.
 - Freed space of Autoclean, DISM, Disk Cleanup, and the Recycle Bin is measured on the system drive only.
 - Emptying the Recycle Bin permanently removes files that were deleted earlier.
 - A full scan of large package manager and browser caches can take a minute or more.
@@ -615,13 +627,14 @@ Cleanup target selection is based on official Windows documentation:
 - [Microsoft Learn: ApplicationData](https://learn.microsoft.com/en-us/uwp/api/windows.storage.applicationdata)
 - [Microsoft Learn: Working with software installations](https://learn.microsoft.com/en-us/powershell/scripting/samples/working-with-software-installations)
 - [Microsoft Learn: Get-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/get-appxpackage)
+- [Microsoft Learn: Clear-RecycleBin](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/clear-recyclebin)
 - [Microsoft Learn: cleanmgr](https://learn.microsoft.com/windows-server/administration/windows-commands/cleanmgr)
 - [Microsoft Learn: Clean up the WinSxS folder](https://learn.microsoft.com/en-ie/windows-hardware/manufacture/desktop/clean-up-the-winsxs-folder)
 - [Microsoft Support: Delete a previous version of Windows](https://support.microsoft.com/en-gb/windows/delete-your-previous-version-of-windows-f8b26680-e083-c710-b757-7567d69dbb74)
 
 ## License
 
-The project metadata declares the MIT License. A complete `LICENSE` file should also be added to the repository before a public release.
+MIT License. The full text is available in [LICENSE](LICENSE).
 
 ## Safety notice
 
