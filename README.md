@@ -10,6 +10,8 @@ KeenyWinCleaner is a careful and transparent cleanup utility for Windows 10 and 
 
 The main principle is simple: the application never deletes anything without permission. Every result includes its path, size, file count, risk level, and additional details. Only explicitly selected and confirmed targets are cleaned.
 
+Two things set it apart from the usual cleanup tool. Nothing is skipped silently: when a file stays behind, the application names the program behind it and offers to ask that program to close. And nothing is counted twice: every cleanup is recorded locally, so the next scan can say how much of an area came back and how fast.
+
 ## Table of contents
 
 - [Key features](#key-features)
@@ -86,6 +88,8 @@ The cleanup flow uses several layers of protection:
 11. Locked or protected files are skipped and counted in the result.
 12. Targets with a minimum age never touch files below that age.
 13. The Recycle Bin, previous Windows versions, update files, and driver packages are only handed to the supported Windows functions.
+14. Closing an application is a request, never a forced termination, and happens only for the processes listed in the report.
+15. Repeating a blocked cleanup reselects the areas but still requires the typed confirmation.
 
 A target ID alone cannot authorize a cleanup. It must come from the current scan and remain approved inside the main process.
 
@@ -436,7 +440,9 @@ Electron main process
     + Target definitions and detection
     + Scanner and parallel path measurement
     + Installed application matching
+    + Running application detection
     + Content classification
+    + Cleanup history and refill rate
     + Approved targets from the latest scan
     + File system cleanup
     + cleanmgr, DISM, and Clear-RecycleBin
@@ -449,6 +455,8 @@ A target can cover several folders at once. A browser profile, for example, grou
 Each folder is walked by a pool of twelve workers over a shared queue. Every accumulated value is order independent, so the result does not depend on how the pool schedules work. On a system with large package manager and browser caches this cuts a full scan from roughly three minutes to about one.
 
 Targets with a minimum file age skip newer files during measurement and during cleanup. A folder that still holds skipped files stays in place.
+
+The list of running processes is read once per scan and reused for every target. After a cleanup it is read again, and only when files were actually skipped.
 
 The renderer has no direct Node.js access. The application window uses:
 
@@ -694,6 +702,9 @@ Cleanup target selection is based on official Windows documentation:
 - [Microsoft Learn: Working with software installations](https://learn.microsoft.com/en-us/powershell/scripting/samples/working-with-software-installations)
 - [Microsoft Learn: Get-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/get-appxpackage)
 - [Microsoft Learn: Clear-RecycleBin](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/clear-recyclebin)
+- [Microsoft Learn: Win32_Process](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process)
+- [Microsoft Learn: taskkill](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill)
+- [Microsoft Learn: tasklist](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tasklist)
 - [Microsoft Learn: cleanmgr](https://learn.microsoft.com/windows-server/administration/windows-commands/cleanmgr)
 - [Microsoft Learn: Clean up the WinSxS folder](https://learn.microsoft.com/en-ie/windows-hardware/manufacture/desktop/clean-up-the-winsxs-folder)
 - [Microsoft Support: Delete a previous version of Windows](https://support.microsoft.com/en-gb/windows/delete-your-previous-version-of-windows-f8b26680-e083-c710-b757-7567d69dbb74)
