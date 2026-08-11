@@ -1,7 +1,7 @@
 # KeenyWinCleaner
 
 ![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)
-![Version](https://img.shields.io/badge/Version-0.1.0-12845f)
+![Version](https://img.shields.io/badge/Version-0.2.0-12845f)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
@@ -592,8 +592,8 @@ npm run build:win
 Artifacts are created in `release`:
 
 ```text
-release/KeenyWinCleaner-Setup-0.1.0-x64.exe
-release/KeenyWinCleaner-Portable-0.1.0-x64.exe
+release/KeenyWinCleaner-Setup-0.2.0-x64.exe
+release/KeenyWinCleaner-Portable-0.2.0-x64.exe
 release/win-unpacked/KeenyWinCleaner.exe
 ```
 
