@@ -1,6 +1,6 @@
 {
   "name": "keenywincleaner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A careful Windows 10 and Windows 11 cleanup utility",
   "private": true,
   "main": "dist-electron/index.js",
