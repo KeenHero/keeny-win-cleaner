@@ -26,7 +26,7 @@ function createWindow(): void {
     height: 920,
     minWidth: 1080,
     minHeight: 720,
-    backgroundColor: '#07110f',
+    backgroundColor: '#090b0f',
     title: 'KeenyWinCleaner',
     show: false,
     webPreferences: {

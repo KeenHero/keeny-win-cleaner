@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { useCallback, useState } from 'react'
 import type { Language } from './types'
 
 const messages = {
@@ -500,8 +500,6 @@ const messages = {
   },
 } as const
 
-const currentLanguage = ref<Language>((localStorage.getItem('keeny-language') as Language) || 'de')
-
 function lookup(source: unknown, key: string): string | undefined {
   let current = source
   for (const part of key.split('.')) {
@@ -512,22 +510,23 @@ function lookup(source: unknown, key: string): string | undefined {
 }
 
 export function useI18n() {
-  const language = computed({
-    get: () => currentLanguage.value,
-    set: (value: Language) => {
-      currentLanguage.value = value
-      localStorage.setItem('keeny-language', value)
-      document.documentElement.lang = value
-    },
+  const [language, setLanguageState] = useState<Language>(() => {
+    return localStorage.getItem('keeny-language') === 'en' ? 'en' : 'de'
   })
 
-  const t = (key: string, replacements: Record<string, string | number> = {}): string => {
-    let value = lookup(messages[language.value], key) ?? key
+  const setLanguage = useCallback((value: Language) => {
+    setLanguageState(value)
+    localStorage.setItem('keeny-language', value)
+    document.documentElement.lang = value
+  }, [])
+
+  const t = useCallback((key: string, replacements: Record<string, string | number> = {}): string => {
+    let value = lookup(messages[language], key) ?? key
     for (const [name, replacement] of Object.entries(replacements)) {
       value = value.replaceAll(`{${name}}`, String(replacement))
     }
     return value
-  }
+  }, [language])
 
-  return { language, t }
+  return { language, setLanguage, t }
 }

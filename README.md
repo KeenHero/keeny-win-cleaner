@@ -3,7 +3,8 @@
 ![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![Version](https://img.shields.io/badge/Version-0.2.0-12845f)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
-![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-Radix%20Nova-18181B)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
 KeenyWinCleaner is a careful and transparent cleanup utility for Windows 10 and Windows 11. It finds temporary files, browser caches of every profile, package manager and build caches, game launcher and shader caches, crash dumps and setup logs, previous Windows installations, superseded update components, and possible leftovers from uninstalled applications.
@@ -360,7 +361,7 @@ The application can open Windows Storage Sense for Downloads, Recycle Bin, cloud
 
 ## User interface
 
-The interface is designed for fast review and clear control.
+The interface uses a minimal desktop dashboard designed for fast review and clear control. It is built from locally owned shadcn/ui source components with a neutral canvas, one emerald accent, compact information density, and consistent interaction states.
 
 - Dashboard with detected size, file count, selected size, and scan time
 - Separate scan options for safe targets, application caches, developer caches, game caches, AppData leftovers, and system areas
@@ -383,6 +384,9 @@ The interface is designed for fast review and clear control.
 - English and German text
 - Light and dark themes
 - Persistent language and theme selection through `localStorage`
+- Responsive dashboard layout with a fixed desktop sidebar and compact mobile navigation
+- Accessible Radix UI dialogs, checkboxes, switches, sliders, tooltips, and keyboard focus states
+- Geist typography and Lucide icons
 
 ## Privacy
 
@@ -416,9 +420,11 @@ The only registry values the application writes are the `StateFlags0099` entries
 | Area | Technology |
 | --- | --- |
 | Desktop runtime | Electron 43 |
-| User interface | Vue 3 |
-| Components | Vuetify 4 |
-| Icons | Material Design Icons |
+| User interface | React 19 |
+| Components | shadcn/ui with Radix UI |
+| Styling | Tailwind CSS 4 |
+| Icons | Lucide React |
+| Typography | Geist |
 | Language | TypeScript 5 |
 | Build system | Vite 8 |
 | Tests | Vitest 4 |
@@ -427,7 +433,7 @@ The only registry values the application writes are the `StateFlags0099` entries
 ### Process separation
 
 ```text
-Vue renderer
+React renderer
     |
     | limited preload API
     v
@@ -491,10 +497,11 @@ keenandclean/
     preload/
       index.ts          Limited renderer API
   src/
-    App.vue             Main user interface
+    components/ui/      Local shadcn/ui source components
+    App.tsx             Main user interface
     i18n.ts             English and German translations
-    main.ts             Vue and Vuetify entry point
-    styles.scss         Light and dark themes
+    index.css           Tailwind theme and design tokens
+    main.tsx            React entry point
     types.ts            Shared data types
   tests/
     safety.test.ts      Safety and classification tests
